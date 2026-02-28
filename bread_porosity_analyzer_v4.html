@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BreadScan v4 — Porosity Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0e0b;--s1:#1a1813;--s2:#221f18;--s3:#2d2820;
+  --border:#3a3428;--gold:#c9a84c;--gold2:#e8c97a;
+  --amber:#d4824a;--muted:#7a7060;--text:#e8dfc8;
+  --green:#7ab87a;--red:#c97a6a;--blue:#7a9ab8;--r:4px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.35;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E")}
+
+header{border-bottom:1px solid var(--border);padding:1.2rem 2.5rem;display:flex;align-items:baseline;gap:1.5rem;flex-wrap:wrap}
+.logo{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:900;color:var(--gold)}
+.logo-sub{font-size:.6rem;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+.logo-ref{margin-left:auto;font-size:.55rem;color:var(--muted);line-height:1.5;text-align:right}
+.logo-ref span{color:var(--gold2)}
+
+.layout{display:grid;grid-template-columns:285px 1fr;min-height:calc(100vh - 62px)}
+.sidebar{border-right:1px solid var(--border);padding:1.5rem 1.2rem;display:flex;flex-direction:column;gap:1.3rem;background:var(--s1);overflow-y:auto}
+.slabel{font-size:.57rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:.4rem}
+
+.upload-zone{border:1px dashed var(--border);border-radius:var(--r);padding:1.1rem 1rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--gold);background:rgba(201,168,76,.04)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-icon{font-size:1.4rem;display:block;margin-bottom:.25rem}
+.upload-zone p{font-size:.63rem;color:var(--muted);line-height:1.5}
+.upload-zone strong{color:var(--gold2)}
+
+.type-row{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+.tbtn{padding:.5rem;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:'DM Mono',monospace;font-size:.62rem;border-radius:var(--r);cursor:pointer;text-align:center;transition:all .15s;line-height:1.4}
+.tbtn:hover{border-color:var(--gold);color:var(--text)}
+.tbtn.on{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold2)}
+.tbtn .ic{font-size:.9rem;display:block;margin-bottom:.15rem}
+
+.algo-badge{font-size:.58rem;background:var(--s3);border:1px solid var(--border);border-radius:var(--r);padding:.4rem .6rem;color:var(--blue);line-height:1.5}
+.algo-badge strong{color:var(--gold2);display:block;margin-bottom:.15rem}
+
+.cg{display:flex;flex-direction:column;gap:.3rem}
+.cr{display:flex;justify-content:space-between;align-items:center;font-size:.64rem}
+.cr span{color:var(--muted)}.cv{color:var(--gold2);min-width:3rem;text-align:right}
+input[type=range]{-webkit-appearance:none;width:100%;height:2px;background:var(--border);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid var(--bg)}
+
+.ibox{background:rgba(201,168,76,.04);border:1px solid rgba(201,168,76,.13);border-radius:var(--r);padding:.55rem;font-size:.61rem;color:var(--muted);line-height:1.6}
+.ibox strong{color:var(--gold2)}
+.ibox.warn{background:rgba(212,130,74,.05);border-color:rgba(212,130,74,.2)}
+.ibox.warn strong{color:var(--amber)}
+.ibox.lit{background:rgba(122,154,184,.04);border-color:rgba(122,154,184,.2)}
+.ibox.lit strong{color:var(--blue)}
+
+hr.div{border:none;border-top:1px solid var(--border)}
+
+.btn{width:100%;padding:.72rem;background:var(--gold);color:var(--bg);border:none;border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.7rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:background .15s,transform .1s;margin-top:auto}
+.btn:hover{background:var(--gold2)}.btn:active{transform:scale(.98)}
+.btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+
+/* MAIN */
+.main{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.5rem;overflow-y:auto}
+
+/* Metrics */
+.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.mc{background:var(--s1);padding:.8rem .9rem}.mc.empty .mv{color:var(--border)}
+.ml{font-size:.53rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.25rem}
+.mv{font-family:'Playfair Display',serif;font-size:1.35rem;font-weight:700;color:var(--gold2);line-height:1}
+.mu{font-size:.5rem;color:var(--muted);margin-top:.2rem}
+.mv.hi{color:var(--green)}.mv.lo{color:var(--amber)}.mv.ok{color:var(--green)}
+
+/* Canvases */
+.cgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:.65rem}
+.cw{display:flex;flex-direction:column;gap:.35rem}
+.clabel{font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:.3rem}
+.clabel::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.clabel .ref{font-size:.48rem;color:var(--muted);opacity:.6;margin-left:auto}
+canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border);border-radius:var(--r);background:var(--s1);display:block;image-rendering:pixelated}
+.ph{width:100%;aspect-ratio:1;border:1px dashed var(--border);border-radius:var(--r);display:flex;align-items:center;justify-content:center;color:var(--border);font-size:.53rem;letter-spacing:.06em;text-transform:uppercase}
+
+/* Fingerprint */
+.fp-wrap{border:1px solid var(--border);border-radius:var(--r);background:var(--s1);overflow:hidden}
+.fp-head{padding:.7rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:.75rem}
+.fp-title{font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.fp-ref{font-size:.52rem;color:var(--blue)}
+.fp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)}
+.fp-cell{background:var(--s2);padding:.65rem .85rem}
+.fp-param{font-size:.55rem;color:var(--muted);margin-bottom:.2rem;letter-spacing:.06em;text-transform:uppercase}
+.fp-val{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--gold2)}
+.fp-unit{font-size:.5rem;color:var(--muted);margin-top:.1rem}
+.fp-bar{height:2px;background:var(--border);border-radius:1px;margin-top:.4rem;overflow:hidden}
+.fp-fill{height:100%;background:var(--gold);border-radius:1px;transition:width .4s ease}
+
+/* Hist */
+.hist-wrap{border:1px solid var(--border);border-radius:var(--r);padding:.9rem 1rem;background:var(--s1)}
+.hist-title{font-size:.57rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem}
+.hist-bars{display:flex;align-items:flex-end;gap:3px;height:65px}
+.bg2{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bar{width:100%;border-radius:2px 2px 0 0;min-height:2px}
+.btick{font-size:.48rem;color:var(--muted);text-align:center;margin-top:1px}
+.pcats{display:grid;grid-template-columns:repeat(5,1fr);gap:.35rem;margin-top:.6rem}
+.pcat{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:.4rem;text-align:center}
+.pcat-l{font-size:.5rem;color:var(--muted);line-height:1.3}
+.pcat-v{font-size:.78rem;color:var(--gold2);margin-top:.12rem}
+.pcat-pct{font-size:.47rem;color:var(--muted)}
+
+/* Log */
+.log{font-size:.59rem;color:var(--muted);background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:.7rem;white-space:pre-wrap;line-height:1.75;max-height:200px;overflow-y:auto}
+.ok{color:var(--green)}.warn{color:var(--amber)}.lit{color:var(--blue)}
+
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">BreadScan</span>
+  <span class="logo-sub">v4 · Literature-Grounded · Multi-Parameter Fingerprint</span>
+  <div class="logo-ref">
+    <span>Thresholding:</span> Gonzales-Barron & Butler (2006) J.Food Eng.<br>
+    <span>Brown bread:</span> Bosakova-Ardenska (2015) HisAnalysis peak-mode<br>
+    <span>Fingerprint:</span> Ruderman et al. (2025) ScienceDirect
+  </div>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+
+  <div>
+    <div class="slabel">Image</div>
+    <div class="upload-zone" id="dz">
+      <input type="file" id="imgIn" accept="image/*"/>
+      <span class="upload-icon">🍞</span>
+      <p><strong>Drop or click to upload</strong><br>Cross-section photo or flatbed scan<br>ROI: crumb only, no crust edges</p>
+    </div>
+  </div>
+
+  <div>
+    <div class="slabel">Bread Type</div>
+    <div class="type-row">
+      <button class="tbtn on" onclick="setType('white',this)"><span class="ic">⬜</span>Control/White</button>
+      <button class="tbtn" onclick="setType('bsg',this)"><span class="ic">🟫</span>BSG/Dark</button>
+    </div>
+    <div class="algo-badge" id="algoBadge" style="margin-top:.5rem">
+      <strong>Algorithm: Otsu (Gonzales-Barron 2006)</strong>
+      Minimizes intra-class variance. Best for white bread with bimodal histogram (dark pores vs. pale crumb).
+    </div>
+  </div>
+
+  <hr class="div"/>
+
+  <div>
+    <div class="slabel">Preprocessing</div>
+    <div class="cg">
+      <div class="cr"><span>Gaussian σ (denoising)</span><span class="cv" id="sgV">1.0</span></div>
+      <input type="range" id="sg" min="0.0" max="3.0" value="1.0" step="0.5"/>
+    </div>
+    <div class="cg" style="margin-top:.5rem">
+      <div class="cr"><span>CLAHE clip (contrast)</span><span class="cv" id="clV">2.0</span></div>
+      <input type="range" id="cl" min="0.5" max="5.0" value="2.0" step="0.5"/>
+    </div>
+    <div class="ibox lit" style="margin-top:.5rem">
+      <strong>Why CLAHE first?</strong> Enhances local contrast before thresholding. Used by Lassoued et al. (2008) for heterogeneous crumb structures.
+    </div>
+  </div>
+
+  <div>
+    <div class="slabel">BSG Mode — Threshold Offset</div>
+    <div class="cg">
+      <div class="cr"><span>Peak offset (±% of range)</span><span class="cv" id="ofV">+5%</span></div>
+      <input type="range" id="of" min="-20" max="30" value="5" step="1"/>
+    </div>
+    <div class="ibox warn" style="margin-top:.5rem">
+      <strong>HisAnalysis logic:</strong> threshold = histogram peak value + offset. Positive offset = detect only the darkest pores (less false positives from BSG fiber). Negative = more inclusive. Tune until binary view matches visible pores.
+    </div>
+  </div>
+
+  <hr class="div"/>
+
+  <div>
+    <div class="slabel">Cell Size Filter (px²)</div>
+    <div class="cg">
+      <div class="cr"><span>Min cell area</span><span class="cv" id="minAV">20</span></div>
+      <input type="range" id="minA" min="5" max="300" value="20" step="5"/>
+    </div>
+    <div class="cg" style="margin-top:.5rem">
+      <div class="cr"><span>Max cell area</span><span class="cv" id="maxAV">15000</span></div>
+      <input type="range" id="maxA" min="500" max="40000" value="15000" step="500"/>
+    </div>
+    <div class="ibox" style="margin-top:.5rem">
+      <strong>No circularity filter</strong> by default. Literature shows bread pores are elliptical (circularity &lt; 1), not circular — filtering by shape rejects real pores. <em>Gonzales-Barron & Butler 2006.</em>
+    </div>
+  </div>
+
+  <div>
+    <div class="slabel">Output</div>
+    <div class="cg">
+      <div class="cr"><span>3D correction ×</span><span class="cv" id="f3V">1.50</span></div>
+      <input type="range" id="f3" min="1.0" max="3.0" value="1.5" step="0.05"/>
+    </div>
+  </div>
+
+  <button class="btn" id="runBtn" disabled>Analyze — Generate Fingerprint</button>
+</aside>
+
+<main class="main">
+
+  <!-- Metrics row -->
+  <div class="metrics">
+    <div class="mc empty"><div class="ml">Void Fraction</div><div class="mv" id="m0">—</div><div class="mu">2D porosity %</div></div>
+    <div class="mc empty"><div class="ml">3D Corrected</div><div class="mv" id="m1">—</div><div class="mu">estimated vol. %</div></div>
+    <div class="mc empty"><div class="ml">Cell Count</div><div class="mv" id="m2">—</div><div class="mu">valid pores</div></div>
+    <div class="mc empty"><div class="ml">Cell Density</div><div class="mv" id="m3">—</div><div class="mu">cells/cm² (crumb fineness)</div></div>
+    <div class="mc empty"><div class="ml">Mean Cell Area</div><div class="mv" id="m4">—</div><div class="mu">px² per pore</div></div>
+    <div class="mc empty"><div class="ml">Uniformity</div><div class="mv" id="m5">—</div><div class="mu">CV of cell areas %</div></div>
+  </div>
+
+  <!-- Canvas grid -->
+  <div class="cgrid">
+    <div class="cw">
+      <div class="clabel">Original<span class="ref"></span></div>
+      <div id="ph0" class="ph">Upload</div>
+      <canvas id="c0" style="display:none"></canvas>
+    </div>
+    <div class="cw">
+      <div class="clabel">CLAHE enhanced<span class="ref">Lassoued 2008</span></div>
+      <div id="ph1" class="ph">—</div>
+      <canvas id="c1" style="display:none"></canvas>
+    </div>
+    <div class="cw">
+      <div class="clabel">Binary mask<span class="ref">Otsu / HisAnalysis</span></div>
+      <div id="ph2" class="ph">—</div>
+      <canvas id="c2" style="display:none"></canvas>
+    </div>
+    <div class="cw">
+      <div class="clabel">Colormap by area<span class="ref">Ruderman 2025</span></div>
+      <div id="ph3" class="ph">—</div>
+      <canvas id="c3" style="display:none"></canvas>
+    </div>
+    <div class="cw">
+      <div class="clabel">Histogram peaks<span class="ref">Bosakova 2015</span></div>
+      <div id="ph4" class="ph">—</div>
+      <canvas id="c4" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <!-- Digital Texture Fingerprint -->
+  <div class="fp-wrap">
+    <div class="fp-head">
+      <span class="fp-title">Digital Texture Fingerprint</span>
+      <span class="fp-ref">after Ruderman et al. (2025) Bread Texture Analyser · ScienceDirect</span>
+    </div>
+    <div class="fp-grid" id="fpGrid">
+      <div class="fp-cell"><div class="fp-param">Void Fraction</div><div class="fp-val" id="fp0">—</div><div class="fp-unit">% crumb area as pores</div><div class="fp-bar"><div class="fp-fill" id="fpb0" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Cell Density</div><div class="fp-val" id="fp1">—</div><div class="fp-unit">cells/100px² (fineness)</div><div class="fp-bar"><div class="fp-fill" id="fpb1" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Mean Cell Area</div><div class="fp-val" id="fp2">—</div><div class="fp-unit">px² (coarseness)</div><div class="fp-bar"><div class="fp-fill" id="fpb2" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Cell Uniformity</div><div class="fp-val" id="fp3">—</div><div class="fp-unit">1 − CV  (1=uniform)</div><div class="fp-bar"><div class="fp-fill" id="fpb3" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Wall Thickness</div><div class="fp-val" id="fp4">—</div><div class="fp-unit">px (estimated)</div><div class="fp-bar"><div class="fp-fill" id="fpb4" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Macro Pore %</div><div class="fp-val" id="fp5">—</div><div class="fp-unit">% large cells (>2000px²)</div><div class="fp-bar"><div class="fp-fill" id="fpb5" style="width:0%"></div></div></div>
+    </div>
+  </div>
+
+  <!-- Histogram -->
+  <div class="hist-wrap">
+    <div class="hist-title">
+      Cell Size Distribution
+      <span style="font-size:.5rem;color:var(--muted);font-weight:normal">— Zghal et al. (1999) parameters —</span>
+    </div>
+    <div class="hist-bars" id="hbars">
+      <div style="font-size:.6rem;color:var(--muted);width:100%;text-align:center;align-self:center">Run analysis</div>
+    </div>
+    <div class="pcats" id="pcats"></div>
+  </div>
+
+  <!-- Log -->
+  <div>
+    <div class="slabel">Analysis Log</div>
+    <div class="log" id="logEl">No analysis run yet.</div>
+  </div>
+
+</main>
+</div>
+
+<!-- Working canvas (hidden) -->
+<canvas id="wk" style="display:none"></canvas>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  1. GRAYSCALE & BLUR
+// ══════════════════════════════════════════════════════
+
+function toGray(data, w, h) {
+  const g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++)
+    g[i] = (0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2]) / 255;
+  return g;
+}
+
+function gaussBlur(src, w, h, sigma) {
+  if (sigma < 0.1) return new Float32Array(src);
+  const r = Math.max(1, Math.ceil(sigma * 2.5));
+  const k = []; let ks = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-(i*i)/(2*sigma*sigma)); k.push(v); ks += v; }
+  for (let i = 0; i < k.length; i++) k[i] /= ks;
+  const tmp = new Float32Array(w*h), out = new Float32Array(w*h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let a = 0;
+    for (let ki = -r; ki <= r; ki++) a += src[y*w + Math.min(Math.max(x+ki,0),w-1)] * k[ki+r];
+    tmp[y*w+x] = a;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let a = 0;
+    for (let ki = -r; ki <= r; ki++) a += tmp[Math.min(Math.max(y+ki,0),h-1)*w+x] * k[ki+r];
+    out[y*w+x] = a;
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════════
+//  2. CLAHE
+// ══════════════════════════════════════════════════════
+
+function clahe(gray, w, h, tileSize, clip) {
+  const out = new Float32Array(w*h);
+  const tx = Math.ceil(w/tileSize), ty = Math.ceil(h/tileSize);
+  const cdfs = [];
+  for (let tyy = 0; tyy < ty; tyy++) for (let txx = 0; txx < tx; txx++) {
+    const hist = new Float32Array(256);
+    const x0=txx*tileSize, x1=Math.min(x0+tileSize,w);
+    const y0=tyy*tileSize, y1=Math.min(y0+tileSize,h);
+    let n = 0;
+    for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++) { hist[Math.round(gray[y*w+x]*255)]++; n++; }
+    const ct = clip * n / 256;
+    let ex = 0;
+    for (let i=0;i<256;i++) { if(hist[i]>ct){ex+=hist[i]-ct;hist[i]=ct;} }
+    const rd = ex / 256;
+    for (let i=0;i<256;i++) hist[i] += rd;
+    const cdf = new Float32Array(256); cdf[0] = hist[0];
+    for (let i=1;i<256;i++) cdf[i] = cdf[i-1] + hist[i];
+    const cmin = cdf.findIndex(v=>v>0)||0;
+    for (let i=0;i<256;i++) cdf[i] = Math.max(0, (cdf[i]-cmin) / Math.max(1, n-cmin));
+    cdfs.push(cdf);
+  }
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    const b = Math.round(gray[y*w+x]*255);
+    const txf=(x/tileSize)-0.5, tyf=(y/tileSize)-0.5;
+    const tx0=Math.max(0,Math.floor(txf)), tx1=Math.min(tx-1,tx0+1);
+    const ty0=Math.max(0,Math.floor(tyf)), ty1=Math.min(ty-1,ty0+1);
+    const wx=txf-tx0, wy=tyf-ty0;
+    out[y*w+x]=(cdfs[ty0*tx+tx0][b]*(1-wx)*(1-wy))
+              +(cdfs[ty0*tx+tx1][b]*wx*(1-wy))
+              +(cdfs[ty1*tx+tx0][b]*(1-wx)*wy)
+              +(cdfs[ty1*tx+tx1][b]*wx*wy);
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════════
+//  3. THRESHOLDING — LITERATURE-GROUNDED
+// ══════════════════════════════════════════════════════
+
+// Otsu — best for white bread (Gonzales-Barron & Butler 2006)
+function otsu(arr) {
+  const hist = new Float32Array(256);
+  for (let i=0;i<arr.length;i++) hist[Math.round(arr[i]*255)]++;
+  const total = arr.length;
+  let sum = 0; for (let i=0;i<256;i++) sum += i*hist[i];
+  let sB=0, wB=0, best=0, thresh=128;
+  for (let i=0;i<256;i++){
+    wB += hist[i]; if(!wB) continue;
+    const wF = total-wB; if(!wF) break;
+    sB += i*hist[i];
+    const mB=sB/wB, mF=(sum-sB)/wF;
+    const v = wB*wF*(mB-mF)**2;
+    if(v>best){best=v;thresh=i;}
+  }
+  return thresh/255; // normalized
+}
+
+// HisAnalysis — peak-mode threshold for BROWN bread
+// After Bosakova-Ardenska (2015): threshold = mode of histogram + offset
+// Pixels DARKER than this value are pores
+function hisAnalysisPeakMode(arr, offsetPct) {
+  const hist = new Float32Array(256);
+  for (let i=0;i<arr.length;i++) hist[Math.round(arr[i]*255)]++;
+  // Find the dominant peak (most frequent intensity = the crumb matrix color)
+  let peakBin = 0, peakVal = 0;
+  for (let i=0;i<256;i++) if(hist[i]>peakVal){peakVal=hist[i];peakBin=i;}
+  // offset shifts threshold relative to full range
+  const offsetBins = Math.round(offsetPct * 2.56); // offsetPct is -20..+30
+  const thresh = Math.min(255, Math.max(0, peakBin + offsetBins));
+  return { tNorm: thresh/255, peakBin, thresh };
+}
+
+// Build histogram for visualization (200×100 canvas)
+function buildHistCanvas(canvasId, arr, threshNorm, peakBin) {
+  const cv = document.getElementById(canvasId);
+  const W2 = 256, H2 = 80;
+  cv.width = W2; cv.height = H2;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0f0e0b'; ctx.fillRect(0,0,W2,H2);
+
+  const hist = new Float32Array(256);
+  for (let i=0;i<arr.length;i++) hist[Math.round(arr[i]*255)]++;
+  const maxH = Math.max(...hist);
+
+  for (let i=0;i<256;i++){
+    const barH = Math.round((hist[i]/maxH) * (H2-4));
+    const x = i;
+    // color: dark = pore zone, light = crumb zone
+    const t255 = Math.round(threshNorm*255);
+    ctx.fillStyle = i < t255 ? 'rgba(201,168,76,0.9)' : 'rgba(122,100,50,0.35)';
+    ctx.fillRect(x, H2-barH, 1, barH);
+  }
+  // Draw threshold line
+  const tx = Math.round(threshNorm*255);
+  ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(tx,0); ctx.lineTo(tx,H2); ctx.stroke();
+  // Draw peak marker
+  if (peakBin !== undefined){
+    ctx.strokeStyle = 'rgba(212,130,74,0.8)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(peakBin,0); ctx.lineTo(peakBin,H2); ctx.stroke();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  4. MORPHOLOGICAL OPS
+// ══════════════════════════════════════════════════════
+
+function dilate(bin,w,h){
+  const o=new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let f=0;
+    for(let dy=-1;dy<=1&&!f;dy++) for(let dx=-1;dx<=1&&!f;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<w&&ny>=0&&ny<h&&bin[ny*w+nx])f=1;
+    }
+    o[y*w+x]=f;
+  }
+  return o;
+}
+function erode(bin,w,h){
+  const o=new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let a=1;
+    for(let dy=-1;dy<=1&&a;dy++) for(let dx=-1;dx<=1&&a;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||nx>=w||ny<0||ny>=h||!bin[ny*w+nx])a=0;
+    }
+    o[y*w+x]=a;
+  }
+  return o;
+}
+const morphClose = (b,w,h) => erode(dilate(b,w,h),w,h);
+
+// ══════════════════════════════════════════════════════
+//  5. CONNECTED COMPONENTS + METRICS
+// ══════════════════════════════════════════════════════
+
+function labelBlobs(bin, w, h) {
+  const vis = new Uint8Array(w*h);
+  const blobs = [];
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+    const idx = y*w+x;
+    if (!bin[idx]||vis[idx]) continue;
+    const q=[idx]; vis[idx]=1; const pix=[];
+    while(q.length){
+      const c=q.pop(); const cx=c%w, cy=Math.floor(c/w);
+      pix.push([cx,cy]);
+      for (const nb of [c-1,c+1,c-w,c+w]){
+        if(nb<0||nb>=w*h||Math.abs((nb%w)-cx)>1||vis[nb]||!bin[nb]) continue;
+        vis[nb]=1; q.push(nb);
+      }
+    }
+    const area=pix.length; if(area<3) continue;
+    let sx=0,sy=0;
+    for(const[px,py] of pix){sx+=px;sy+=py;}
+    blobs.push({area, cx:sx/area, cy:sy/area, pix});
+  }
+  return blobs;
+}
+
+// ══════════════════════════════════════════════════════
+//  6. COLORMAP CANVAS (Ruderman 2025 technique)
+// ══════════════════════════════════════════════════════
+
+// Heatmap from small (purple/blue) → large (yellow/red) cells
+function areaToColor(area, minA, maxA) {
+  const t = maxA > minA ? Math.pow((area-minA)/(maxA-minA), 0.4) : 0;
+  // Color ramp: blue → cyan → green → yellow → red
+  const stops = [
+    [0,   [60,  80, 180]],
+    [0.25,[40, 160, 180]],
+    [0.5, [80, 180,  80]],
+    [0.75,[200,180,  40]],
+    [1.0, [210, 60,  40]],
+  ];
+  for (let i=0;i<stops.length-1;i++){
+    const [t0,c0]=stops[i], [t1,c1]=stops[i+1];
+    if(t>=t0&&t<=t1){
+      const f=(t-t0)/(t1-t0);
+      return c0.map((v,j)=>Math.round(v+(c1[j]-v)*f));
+    }
+  }
+  return [210,60,40];
+}
+
+function drawColormap(canvasId, w, h, validBlobs, minA, maxA) {
+  const cv = document.getElementById(canvasId); cv.width=w; cv.height=h;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0f0e0b'; ctx.fillRect(0,0,w,h);
+  for (const b of validBlobs) {
+    const [r,g,bl2] = areaToColor(b.area, minA, maxA);
+    ctx.fillStyle = `rgba(${r},${g},${bl2},0.92)`;
+    for (const [px,py] of b.pix) ctx.fillRect(px,py,1,1);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  7. RENDER HELPERS
+// ══════════════════════════════════════════════════════
+
+function grayToCanvas(id, arr, w, h){
+  const cv=document.getElementById(id); cv.width=w; cv.height=h;
+  const ctx=cv.getContext('2d'); const d=ctx.createImageData(w,h);
+  for(let i=0;i<w*h;i++){const v=Math.round(Math.min(1,Math.max(0,arr[i]))*255);d.data[i*4]=v;d.data[i*4+1]=v;d.data[i*4+2]=v;d.data[i*4+3]=255;}
+  ctx.putImageData(d,0,0);
+}
+
+function binToCanvas(id, bin, w, h){
+  const cv=document.getElementById(id); cv.width=w; cv.height=h;
+  const ctx=cv.getContext('2d'); const d=ctx.createImageData(w,h);
+  for(let i=0;i<w*h;i++){
+    if(bin[i]){d.data[i*4]=201;d.data[i*4+1]=168;d.data[i*4+2]=76;}
+    else{d.data[i*4]=15;d.data[i*4+1]=14;d.data[i*4+2]=11;}
+    d.data[i*4+3]=255;
+  }
+  ctx.putImageData(d,0,0);
+}
+
+function show(cid, phid){
+  document.getElementById(phid).style.display='none';
+  document.getElementById(cid).style.display='block';
+}
+
+// ══════════════════════════════════════════════════════
+//  8. HISTOGRAM + FINGERPRINT RENDER
+// ══════════════════════════════════════════════════════
+
+const CAT_COLORS = ['#7a9ab8','#7ab87a','#c9a84c','#d4824a','#c97a6a'];
+
+function renderHist(blobs, total) {
+  const hEl=document.getElementById('hbars'), pEl=document.getElementById('pcats');
+  hEl.innerHTML=''; pEl.innerHTML='';
+  if(!blobs.length){hEl.innerHTML='<div style="font-size:.6rem;color:var(--muted);width:100%;text-align:center;align-self:center">No cells detected</div>';return;}
+  const cats=[
+    {l:'Micro\n<50px²',min:0,max:50},
+    {l:'Small\n50–200',min:50,max:200},
+    {l:'Medium\n200–1k',min:200,max:1000},
+    {l:'Large\n1k–5k',min:1000,max:5000},
+    {l:'Macro\n>5k',min:5000,max:Infinity}
+  ];
+  const counts=cats.map(c=>blobs.filter(b=>b.area>=c.min&&b.area<c.max).length);
+  const areas=cats.map(c=>blobs.filter(b=>b.area>=c.min&&b.area<c.max).reduce((s,b)=>s+b.area,0));
+  const mx=Math.max(...counts,1);
+  cats.forEach((c,i)=>{
+    const bg=document.createElement('div'); bg.className='bg2';
+    const bar=document.createElement('div'); bar.className='bar';
+    bar.style.height=Math.round(counts[i]/mx*65)+'px';
+    bar.style.background=CAT_COLORS[i];
+    const tick=document.createElement('div'); tick.className='btick'; tick.textContent=counts[i];
+    bg.appendChild(bar); bg.appendChild(tick);
+    hEl.appendChild(bg);
+
+    const p=document.createElement('div'); p.className='pcat';
+    const pct = total>0?(areas[i]/total*100).toFixed(1):'0';
+    p.innerHTML=`<div class="pcat-l">${c.l.replace('\n','<br>')}</div><div class="pcat-v" style="color:${CAT_COLORS[i]}">${counts[i]}</div><div class="pcat-pct">${pct}% area</div>`;
+    pEl.appendChild(p);
+  });
+}
+
+function renderFingerprint(blobs, totalPx, W, H) {
+  if(!blobs.length) return;
+  const areas = blobs.map(b=>b.area);
+  const voidFrac = areas.reduce((s,a)=>s+a,0)/totalPx;
+  const cellDensity = blobs.length / (totalPx/10000); // cells per 100px²
+  const meanA = areas.reduce((s,a)=>s+a,0)/areas.length;
+  const variance = areas.reduce((s,a)=>s+(a-meanA)**2,0)/areas.length;
+  const cv = Math.sqrt(variance)/meanA;
+  const uniformity = Math.max(0, 1-cv);
+  // Wall thickness estimate: avg distance between cells ≈ sqrt(crumb_area / cells)
+  const solidArea = totalPx - areas.reduce((s,a)=>s+a,0);
+  const wallThick = blobs.length>0 ? Math.sqrt(solidArea/blobs.length) : 0;
+  // Macro pore fraction
+  const macroArea = areas.filter(a=>a>2000).reduce((s,a)=>s+a,0);
+  const macroPct = macroArea/totalPx*100;
+
+  const fmt=(v,d=1)=>isNaN(v)?'—':v.toFixed(d);
+  const setFP=(id,bid,val,maxVal,txt)=>{
+    document.getElementById(id).textContent=txt||fmt(val);
+    const pct = Math.min(100, Math.round(val/maxVal*100));
+    document.getElementById(bid).style.width=pct+'%';
+  };
+  setFP('fp0','fpb0',voidFrac*100,100, fmt(voidFrac*100)+'%');
+  setFP('fp1','fpb1',cellDensity,2, fmt(cellDensity,2));
+  setFP('fp2','fpb2',meanA,5000, Math.round(meanA));
+  setFP('fp3','fpb3',uniformity*100,100, fmt(uniformity*100)+'%');
+  setFP('fp4','fpb4',wallThick,50, fmt(wallThick,1)+'px');
+  setFP('fp5','fpb5',macroPct,50, fmt(macroPct)+'%');
+}
+
+// ══════════════════════════════════════════════════════
+//  9. MAIN ANALYSIS PIPELINE
+// ══════════════════════════════════════════════════════
+
+function analyze() {
+  const log = [], t0 = performance.now();
+  const type   = document.getElementById('wk').dataset.type || 'white';
+  const sigma  = parseFloat(document.getElementById('sg').value);
+  const clip   = parseFloat(document.getElementById('cl').value);
+  const ofPct  = parseInt(document.getElementById('of').value);
+  const minA   = parseInt(document.getElementById('minA').value);
+  const maxA   = parseInt(document.getElementById('maxA').value);
+  const f3d    = parseFloat(document.getElementById('f3').value);
+
+  const wk = document.getElementById('wk');
+  const {width:W, height:H} = wk;
+  const imgData = wk.getContext('2d').getImageData(0,0,W,H);
+
+  log.push(`Image: ${W}×${H}  |  Type: ${type}  |  σ=${sigma}  |  CLAHE clip=${clip}`);
+
+  // Step 1: Grayscale + blur
+  let gray = toGray(imgData.data, W, H);
+  gray = gaussBlur(gray, W, H, sigma);
+
+  // Step 2: CLAHE
+  const enhanced = clahe(gray, W, H, 32, clip);
+
+  // Step 3: Threshold — algorithm chosen by bread type
+  let binary, tNorm, peakBin, algoName;
+  if (type === 'white') {
+    tNorm = otsu(enhanced);
+    peakBin = undefined;
+    algoName = 'Otsu (Gonzales-Barron & Butler 2006)';
+    binary = new Uint8Array(W*H);
+    for(let i=0;i<enhanced.length;i++) binary[i] = enhanced[i] < tNorm ? 1 : 0;
+    log.push(`[LIT] Otsu threshold: ${(tNorm*255).toFixed(1)}/255  (${(tNorm*100).toFixed(1)}%)`);
+  } else {
+    const res = hisAnalysisPeakMode(enhanced, ofPct);
+    tNorm = res.tNorm; peakBin = res.peakBin; algoName = 'HisAnalysis peak-mode (Bosakova-Ardenska 2015)';
+    binary = new Uint8Array(W*H);
+    for(let i=0;i<enhanced.length;i++) binary[i] = enhanced[i] < tNorm ? 1 : 0;
+    log.push(`[LIT] HisAnalysis — histogram peak at bin ${peakBin} (${(peakBin/255*100).toFixed(1)}%)`);
+    log.push(`[LIT] Threshold = peak + ${ofPct}% offset = bin ${res.thresh} (${(tNorm*100).toFixed(1)}%)`);
+    log.push(`      ↳ Pixels DARKER than this are classified as pores`);
+  }
+
+  const rawPx = binary.reduce((s,v)=>s+v,0);
+  log.push(`Raw dark pixels: ${rawPx} (${(rawPx/W/H*100).toFixed(1)}%)`);
+
+  // Step 4: Morphological close
+  const closed = morphClose(binary, W, H);
+  const closedPx = closed.reduce((s,v)=>s+v,0);
+  log.push(`After morph-close: ${closedPx} px (${(closedPx/W/H*100).toFixed(1)}%)`);
+
+  // Step 5: Label blobs + size filter only (NO circularity filter — per Gonzales-Barron 2006)
+  const allBlobs = labelBlobs(closed, W, H);
+  const valid = allBlobs.filter(b => b.area >= minA && b.area <= maxA);
+  const tooSmall = allBlobs.filter(b => b.area < minA).length;
+  const tooLarge = allBlobs.filter(b => b.area > maxA).length;
+
+  log.push(`Blobs: ${allBlobs.length} total  →  ${valid.length} valid  (${tooSmall} too small, ${tooLarge} too large)`);
+  log.push(`[NOTE] No circularity filter — bread pores are elliptical (Gonzales-Barron 2006)`);
+
+  // Step 6: Metrics
+  const totalPx = W*H;
+  const porePx  = valid.reduce((s,b)=>s+b.area,0);
+  const vf2d    = porePx/totalPx;
+  const vf3d    = Math.min(vf2d*f3d,1);
+  const density = valid.length / (totalPx/10000);
+  const meanA2  = valid.length ? porePx/valid.length : 0;
+  const cvAreas = (() => {
+    if (!valid.length) return 0;
+    const areas=valid.map(b=>b.area);
+    const m=meanA2, v=areas.reduce((s,a)=>s+(a-m)**2,0)/areas.length;
+    return Math.sqrt(v)/m;
+  })();
+
+  log.push(`\n── FINGERPRINT ──`);
+  log.push(`Void fraction (2D):   ${(vf2d*100).toFixed(2)}%`);
+  log.push(`3D corrected (×${f3d}): ${(vf3d*100).toFixed(2)}%`);
+  log.push(`Cell count:           ${valid.length}`);
+  log.push(`Cell density:         ${density.toFixed(3)} cells/100px²`);
+  log.push(`Mean cell area:       ${Math.round(meanA2)} px²`);
+  log.push(`Cell uniformity (1-CV): ${(Math.max(0,1-cvAreas)*100).toFixed(1)}%`);
+
+  // Quality check vs literature
+  if (type==='white'){
+    if (vf2d < 0.05) log.push(`\n⚠ Very low for white bread (lit 15–35%). Check: is lighting creating highlights inside pores? Try raising CLAHE clip or using flatbed scan.`);
+    else if (vf2d >= 0.10 && vf2d <= 0.40) log.push(`\n✓ Void fraction within expected range for white wheat bread.`);
+    else if (vf2d > 0.40) log.push(`\n⚠ High — may include non-pore regions. Review binary view.`);
+    else log.push(`\nℹ Low-end — check binary view; may be photography artifacts.`);
+  } else {
+    log.push(`\nℹ BSG bread: expected lower void fraction than control due to fiber disrupting gas cell structure.`);
+    log.push(`  Compare relative values across formulations, not absolute values.`);
+  }
+  log.push(`\nAlgorithm: ${algoName}`);
+  log.push(`Time: ${(performance.now()-t0).toFixed(1)}ms`);
+
+  // ── RENDER ──
+  grayToCanvas('c1', enhanced, W, H); show('c1','ph1');
+  binToCanvas('c2', closed, W, H);   show('c2','ph2');
+
+  if (valid.length > 0) {
+    const areas = valid.map(b=>b.area);
+    drawColormap('c3', W, H, valid, Math.min(...areas), Math.max(...areas));
+    show('c3','ph3');
+  }
+
+  buildHistCanvas('c4', enhanced, tNorm, peakBin); show('c4','ph4');
+  renderHist(valid, totalPx);
+  renderFingerprint(valid, totalPx, W, H);
+
+  // Metrics bar
+  const fmt=v=>(v*100).toFixed(1)+'%';
+  const setM=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='mv'+(cls?' '+cls:'');e.closest('.mc').classList.remove('empty');};
+  const vfClass = type==='white' && vf2d>=0.10&&vf2d<=0.40?'ok': vf2d<0.05?'lo':'';
+  setM('m0',fmt(vf2d),vfClass);
+  setM('m1',fmt(vf3d),'');
+  setM('m2',String(valid.length),'ok');
+  setM('m3',density.toFixed(2),'');
+  setM('m4',String(Math.round(meanA2)),'');
+  setM('m5',(Math.max(0,1-cvAreas)*100).toFixed(0)+'%','');
+
+  // Log
+  const logEl=document.getElementById('logEl');
+  logEl.innerHTML=log.map(l=>
+    l.startsWith('✓')    ?`<span class="ok">${l}</span>`
+    :l.startsWith('⚠')   ?`<span class="warn">${l}</span>`
+    :l.startsWith('[LIT]')?`<span class="lit">${l}</span>`
+    :l.startsWith('ℹ')   ?`<span style="color:var(--blue)">${l}</span>`
+    :l
+  ).join('\n');
+}
+
+// ══════════════════════════════════════════════════════
+//  10. UI WIRING
+// ══════════════════════════════════════════════════════
+
+const ALGO_TEXT = {
+  white: '<strong>Algorithm: Otsu (Gonzales-Barron & Butler 2006)</strong>\nMinimizes intra-class variance. Best for white bread with bimodal histogram — dark pores vs. pale crumb.',
+  bsg:   '<strong>Algorithm: HisAnalysis peak-mode (Bosakova-Ardenska 2015)</strong>\nThreshold = histogram peak + offset. Peak = dominant crumb color. Pores = pixels darker than this. Validated for brown bread (corr. r=0.93 vs. physicochemical porosity).'
+};
+
+function setType(t, btn){
+  document.getElementById('wk').dataset.type = t;
+  document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('algoBadge').innerHTML = ALGO_TEXT[t];
+  syncSliders();
+}
+
+function syncSliders(){
+  const map=[
+    ['sg','sgV','.1f'],['cl','clV','.1f'],['of','ofV','off'],
+    ['minA','minAV',''],['maxA','maxAV',''],['f3','f3V','.2f']
+  ];
+  map.forEach(([id,vid,fmt])=>{
+    const v=document.getElementById(id).value;
+    let txt;
+    if(fmt==='off') txt=(parseInt(v)>=0?'+':'')+v+'%';
+    else if(fmt==='.2f') txt=parseFloat(v).toFixed(2);
+    else if(fmt==='.1f') txt=parseFloat(v).toFixed(1);
+    else txt=v;
+    document.getElementById(vid).textContent=txt;
+  });
+}
+document.querySelectorAll('input[type=range]').forEach(el=>el.addEventListener('input',syncSliders));
+
+function loadImg(file){
+  const r=new FileReader();
+  r.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=650; let iw=img.width,ih=img.height;
+      if(iw>MAX||ih>MAX){const ratio=Math.min(MAX/iw,MAX/ih);iw=Math.round(iw*ratio);ih=Math.round(ih*ratio);}
+      const wk=document.getElementById('wk');
+      wk.width=iw; wk.height=ih;
+      if(!wk.dataset.type) wk.dataset.type='white';
+      wk.getContext('2d').drawImage(img,0,0,iw,ih);
+      const c0=document.getElementById('c0'); c0.width=iw; c0.height=ih;
+      c0.getContext('2d').drawImage(img,0,0,iw,ih);
+      document.getElementById('ph0').style.display='none'; c0.style.display='block';
+      ['ph1','ph2','ph3','ph4'].forEach(id=>{document.getElementById(id).style.display='';});
+      ['c1','c2','c3','c4'].forEach(id=>{document.getElementById(id).style.display='none';});
+      document.getElementById('runBtn').disabled=false;
+      document.getElementById('logEl').textContent='Image loaded — select bread type, then press Analyze.';
+    };
+    img.src=ev.target.result;
+  };
+  r.readAsDataURL(file);
+}
+
+document.getElementById('imgIn').addEventListener('change',e=>{if(e.target.files[0])loadImg(e.target.files[0]);});
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImg(f);});
+document.getElementById('runBtn').addEventListener('click',analyze);
+
+syncSliders();
+</script>
+</body>
+</html>
