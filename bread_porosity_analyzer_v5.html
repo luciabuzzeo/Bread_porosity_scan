@@ -130,7 +130,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 /* Canvas overlay container */
 .canvas-overlay-container{position:relative;display:inline-block;width:100%}
 .canvas-overlay-container canvas{width:100%;display:block}
-#cROI{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent!important;cursor:crosshair;z-index:2}
+#cROI{position:absolute;inset:0;width:100%;height:100%;background:transparent!important;pointer-events:none;z-index:2}
 
 /* Calibration modal */
 .cal-modal-box{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:700px;width:95%;display:flex;flex-direction:column;gap:1rem}
@@ -156,16 +156,13 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 .cal-hint{font-size:.55rem;color:var(--muted);text-align:center;padding:.3rem;line-height:1.5}
 .cal-hint strong{color:var(--gold2)}
 
-/* ROI sidebar section */
-.roi-section{display:none}
-.roi-section.visible{display:block}
-.roi-toggle{display:flex;gap:.4rem;margin-bottom:.5rem}
-.roi-toggle .mbtn{flex:1;text-align:center;padding:.45rem;font-size:.58rem;justify-content:center}
-.roi-toggle .mbtn.on{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold2)}
-.roi-status{font-size:.56rem;color:var(--muted);line-height:1.5}
-.roi-status strong{color:var(--gold2)}
-.cal-badge{font-size:.56rem;background:var(--s3);border:1px solid rgba(122,184,122,.2);border-radius:var(--r);padding:.4rem .6rem;color:var(--green);line-height:1.5;margin-bottom:.5rem}
+/* Calibration badge in sidebar */
+.cal-badge{font-size:.56rem;background:var(--s3);border:1px solid rgba(122,184,122,.2);border-radius:var(--r);padding:.4rem .6rem;color:var(--green);line-height:1.5;display:none}
+.cal-badge.visible{display:block}
 .cal-badge strong{color:var(--green)}
+/* Skip ROI link */
+.cal-skip{font-size:.55rem;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:'DM Mono',monospace}
+.cal-skip:hover{color:var(--gold2)}
 
 /* Interactive canvas column - wider on mobile */
 @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.cw-interactive{grid-column:1/-1}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
@@ -226,9 +223,10 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
         </select>
       </div>
       <div class="cal-result" id="calResult"></div>
-      <button class="cal-confirm" id="calConfirmBtn" disabled onclick="confirmCalibration()">Confirm</button>
+      <button class="cal-skip" id="calSkipBtn" style="display:none" onclick="confirmCalibration(true)">Skip — use full image</button>
+      <button class="cal-confirm" id="calConfirmBtn" disabled onclick="confirmCalibration(false)">Confirm</button>
     </div>
-    <div class="cal-hint" id="calHint"><strong>Tap two points</strong> on the ruler/coin in the photo above. Tap again to redo.</div>
+    <div class="cal-hint" id="calHint"><strong>Tap two points</strong> on the ruler/coin in the photo above</div>
   </div>
 </div>
 
@@ -254,16 +252,8 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
     </div>
   </div>
 
-  <!-- ROI section (shown after calibration) -->
-  <div class="roi-section" id="roiSection">
-    <div class="slabel">Calibration & ROI</div>
-    <div class="cal-badge" id="calBadge"></div>
-    <div class="roi-toggle">
-      <button class="mbtn on" id="roiFull" onclick="setROIMode('full')">Full Image</button>
-      <button class="mbtn" id="roiDraw" onclick="setROIMode('draw')">Draw ROI</button>
-    </div>
-    <div class="roi-status" id="roiStatus">Using full image for analysis.</div>
-  </div>
+  <!-- Calibration badge (shown after calibration) -->
+  <div class="cal-badge" id="calBadge"></div>
 
   <div>
     <div class="slabel">Bread Type</div>
@@ -437,9 +427,7 @@ function resetState() {
   STATE.mode = 'crumb'; STATE.phase = 'idle';
   STATE.calPts = []; STATE.pxPerMm = null;
   STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
-  document.getElementById('roiSection').classList.remove('visible');
-  document.getElementById('roiStatus').textContent = 'Using full image for analysis.';
-  setROIBtnState('full');
+  document.getElementById('calBadge').classList.remove('visible');
   drawOverlay();
 }
 
@@ -499,11 +487,40 @@ function drawCalOverlay() {
   const ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, cv.width, cv.height);
 
+  // Draw ROI rectangle (step 3) — draw first so cal line appears on top
+  if (STATE.roi && STATE.phase === 'roi') {
+    const r = STATE.roi;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, cv.width, r.y);
+    ctx.fillRect(0, r.y, r.x, r.h);
+    ctx.fillRect(r.x + r.w, r.y, cv.width - r.x - r.w, r.h);
+    ctx.fillRect(0, r.y + r.h, cv.width, cv.height - r.y - r.h);
+    ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // Corner handles
+    const hs = 10;
+    ctx.fillStyle = '#c9a84c';
+    for (const [cx, cy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
+      ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    }
+    // Size label
+    if (STATE.pxPerMm) {
+      const mmW = (r.w / STATE.pxPerMm).toFixed(1), mmH = (r.h / STATE.pxPerMm).toFixed(1);
+      const label = `${mmW} x ${mmH} mm`;
+      ctx.font = 'bold 14px DM Mono'; ctx.textAlign = 'center';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(15,14,11,0.7)';
+      ctx.fillRect(r.x + r.w / 2 - tw / 2 - 4, r.y - 24, tw + 8, 20);
+      ctx.fillStyle = '#e8c97a';
+      ctx.fillText(label, r.x + r.w / 2, r.y - 10);
+    }
+  }
+
+  // Draw calibration points and line
   if (STATE.calPts.length > 0) {
     ctx.fillStyle = '#e8c97a'; ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 3;
     for (const p of STATE.calPts) {
       ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
-      // Crosshair
       ctx.strokeStyle = 'rgba(232,201,122,0.5)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(p.x - 18, p.y); ctx.lineTo(p.x + 18, p.y); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(p.x, p.y - 18); ctx.lineTo(p.x, p.y + 18); ctx.stroke();
@@ -514,12 +531,11 @@ function drawCalOverlay() {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      ctx.font = 'bold 16px DM Mono'; ctx.fillStyle = '#e8c97a'; ctx.textAlign = 'center';
+      ctx.font = 'bold 16px DM Mono'; ctx.textAlign = 'center';
       const label = STATE.pxPerMm ? `${(dist / STATE.pxPerMm).toFixed(1)}mm` : `${dist.toFixed(0)}px`;
-      // Background for text readability
       const tw = ctx.measureText(label).width;
       ctx.fillStyle = 'rgba(15,14,11,0.7)';
-      ctx.fillRect(mx - tw/2 - 4, my - 24, tw + 8, 20);
+      ctx.fillRect(mx - tw / 2 - 4, my - 24, tw + 8, 20);
       ctx.fillStyle = '#e8c97a';
       ctx.fillText(label, mx, my - 10);
     }
@@ -540,22 +556,51 @@ function calcCalibration() {
   STATE.pxPerMm = distPx / mmVal;
   document.getElementById('calResult').innerHTML =
     `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong>`;
-  document.getElementById('calConfirmBtn').disabled = false;
-  document.getElementById('calSteps').innerHTML = '<strong>Done!</strong> Confirm or tap to redo';
+  // Transition to step 3 only if not already there
+  if (STATE.phase !== 'roi') enterROIStep();
   drawCalOverlay();
 }
 
-function confirmCalibration() {
-  if (!STATE.pxPerMm) return;
-  document.getElementById('calModal').style.display = 'none';
+function enterROIStep() {
   STATE.phase = 'roi';
-  // Show ROI section with calibration badge
-  const roiSec = document.getElementById('roiSection');
-  roiSec.classList.add('visible');
-  document.getElementById('calBadge').innerHTML =
-    `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> — calibrated with ${STATE.mode}`;
+  STATE.roi = null;
+  document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+  document.getElementById('calHint').innerHTML = '<strong>Drag on the image</strong> to select the crumb region (exclude crust and reference objects)';
+  document.getElementById('calSkipBtn').style.display = '';
+  document.getElementById('calConfirmBtn').disabled = true;
+  document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
+}
+
+function confirmCalibration(skip) {
+  if (!STATE.pxPerMm) return;
+  if (skip) STATE.roi = null;
+  document.getElementById('calModal').style.display = 'none';
+  STATE.phase = 'done';
+  // Show calibration badge in sidebar
+  const badge = document.getElementById('calBadge');
+  badge.classList.add('visible');
+  const roiTxt = STATE.roi
+    ? ` | ROI: ${(STATE.roi.w / STATE.pxPerMm).toFixed(1)}x${(STATE.roi.h / STATE.pxPerMm).toFixed(1)}mm`
+    : '';
+  badge.innerHTML = `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> (${STATE.mode})${roiTxt}`;
   document.getElementById('runBtn').disabled = false;
   drawOverlay();
+}
+
+function calHitTestROI(px, py) {
+  if (!STATE.roi) return null;
+  const r = STATE.roi, margin = 14;
+  const corners = [
+    { name: 'tl', cx: r.x, cy: r.y },
+    { name: 'tr', cx: r.x + r.w, cy: r.y },
+    { name: 'bl', cx: r.x, cy: r.y + r.h },
+    { name: 'br', cx: r.x + r.w, cy: r.y + r.h }
+  ];
+  for (const c of corners) {
+    if (Math.abs(px - c.cx) < margin && Math.abs(py - c.cy) < margin) return c.name;
+  }
+  if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'move';
+  return null;
 }
 
 function initCalModalEvents() {
@@ -569,48 +614,86 @@ function initCalModalEvents() {
     return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
   }
 
-  cv.addEventListener('pointerdown', (e) => {
-    if (STATE.phase !== 'calibrating') return;
+  function onDown(e) {
     e.preventDefault();
     const pt = calCoords(e);
 
-    if (STATE.calPts.length < 2) {
-      STATE.calPts.push(pt);
-      drawCalOverlay();
-      if (STATE.calPts.length === 1) {
+    // Step 1 & 2: calibration point taps
+    if (STATE.phase === 'calibrating') {
+      if (STATE.calPts.length < 2) {
+        STATE.calPts.push(pt);
+        drawCalOverlay();
+        if (STATE.calPts.length === 1) {
+          document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
+        }
+        if (STATE.calPts.length === 2) calcCalibration();
+      } else {
+        // Redo: reset to step 1
+        STATE.calPts = [pt];
+        STATE.pxPerMm = null;
+        STATE.roi = null;
+        document.getElementById('calResult').textContent = '';
+        document.getElementById('calConfirmBtn').disabled = true;
+        document.getElementById('calSkipBtn').style.display = 'none';
         document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
+        drawCalOverlay();
       }
-      if (STATE.calPts.length === 2) calcCalibration();
-    } else {
-      // Redo: reset points
-      STATE.calPts = [pt];
-      STATE.pxPerMm = null;
-      document.getElementById('calResult').textContent = '';
-      document.getElementById('calConfirmBtn').disabled = true;
-      document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
-      drawCalOverlay();
+      return;
     }
-  });
-}
 
-// ── ROI mode ──
-function setROIMode(mode) {
-  STATE.roiMode = mode;
-  setROIBtnState(mode);
-  if (mode === 'full') {
-    STATE.roi = null;
-    document.getElementById('roiStatus').textContent = 'Using full image for analysis.';
-    drawOverlay();
-    if (!document.getElementById('runBtn').disabled) analyze();
-  } else {
-    document.getElementById('roiStatus').innerHTML = '<strong>Click and drag</strong> on the image to select the crumb region.';
-    drawOverlay();
+    // Step 3: ROI drawing
+    if (STATE.phase === 'roi') {
+      const hit = calHitTestROI(pt.x, pt.y);
+      if (hit === 'move') {
+        STATE.drag = { type: 'move', sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+      } else if (hit) {
+        STATE.drag = { type: 'resize', corner: hit, sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+      } else {
+        STATE.roi = { x: pt.x, y: pt.y, w: 0, h: 0 };
+        STATE.drag = { type: 'new', sx: pt.x, sy: pt.y };
+      }
+    }
   }
-}
 
-function setROIBtnState(mode) {
-  document.getElementById('roiFull').classList.toggle('on', mode === 'full');
-  document.getElementById('roiDraw').classList.toggle('on', mode === 'draw');
+  function onMove(e) {
+    if (!STATE.drag || STATE.phase !== 'roi') return;
+    e.preventDefault();
+    const pt = calCoords(e);
+    const d = STATE.drag;
+
+    if (d.type === 'new') {
+      STATE.roi = normalizeROI({ x: d.sx, y: d.sy, w: pt.x - d.sx, h: pt.y - d.sy });
+    } else if (d.type === 'move') {
+      const dx = pt.x - d.sx, dy = pt.y - d.sy;
+      let nx = d.origROI.x + dx, ny = d.origROI.y + dy;
+      nx = Math.max(0, Math.min(nx, STATE.imgW - d.origROI.w));
+      ny = Math.max(0, Math.min(ny, STATE.imgH - d.origROI.h));
+      STATE.roi = { x: Math.round(nx), y: Math.round(ny), w: d.origROI.w, h: d.origROI.h };
+    } else if (d.type === 'resize') {
+      const r = { ...d.origROI };
+      const c = d.corner;
+      if (c.includes('r')) { r.w = pt.x - r.x; }
+      if (c.includes('l')) { r.w = (r.x + r.w) - pt.x; r.x = pt.x; }
+      if (c.includes('b')) { r.h = pt.y - r.y; }
+      if (c.includes('t')) { r.h = (r.y + r.h) - pt.y; r.y = pt.y; }
+      STATE.roi = normalizeROI(r);
+    }
+    drawCalOverlay();
+  }
+
+  function onUp() {
+    if (!STATE.drag) return;
+    STATE.drag = null;
+    if (STATE.roi && STATE.roi.w > 10 && STATE.roi.h > 10) {
+      document.getElementById('calConfirmBtn').disabled = false;
+      document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
+    }
+  }
+
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
 }
 
 // ══════════════════════════════════════════════════════
@@ -995,17 +1078,6 @@ function renderFingerprint(blobs, totalPx, W, H, cal) {
 //  8b. OVERLAY CANVAS — calibration points + ROI rect
 // ══════════════════════════════════════════════════════
 
-function canvasCoords(e, canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
-  const scaleX = STATE.imgW / rect.width;
-  const scaleY = STATE.imgH / rect.height;
-  return {
-    x: (t.clientX - rect.left) * scaleX,
-    y: (t.clientY - rect.top) * scaleY
-  };
-}
-
 function drawOverlay() {
   const cv = document.getElementById('cROI');
   if (!STATE.imgW || !STATE.imgH) return;
@@ -1049,99 +1121,6 @@ function normalizeROI(r) {
   w = Math.min(w, STATE.imgW - x);
   h = Math.min(h, STATE.imgH - y);
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
-}
-
-function hitTestROI(px, py) {
-  if (!STATE.roi) return null;
-  const r = STATE.roi, margin = 12;
-  // Corners
-  const corners = [
-    { name: 'tl', cx: r.x, cy: r.y },
-    { name: 'tr', cx: r.x + r.w, cy: r.y },
-    { name: 'bl', cx: r.x, cy: r.y + r.h },
-    { name: 'br', cx: r.x + r.w, cy: r.y + r.h }
-  ];
-  for (const c of corners) {
-    if (Math.abs(px - c.cx) < margin && Math.abs(py - c.cy) < margin) return c.name;
-  }
-  // Inside → move
-  if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'move';
-  return null;
-}
-
-function initOverlayEvents() {
-  const cv = document.getElementById('cROI');
-
-  function onDown(e) {
-    e.preventDefault();
-    const pt = canvasCoords(e, cv);
-
-    // ROI drawing only (calibration is handled in the cal modal)
-    if (STATE.roiMode !== 'draw') return;
-    const hit = hitTestROI(pt.x, pt.y);
-    if (hit === 'move') {
-      STATE.drag = { type: 'move', sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
-    } else if (hit) {
-      STATE.drag = { type: 'resize', corner: hit, sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
-    } else {
-      // New ROI
-      STATE.roi = { x: pt.x, y: pt.y, w: 0, h: 0 };
-      STATE.drag = { type: 'new', sx: pt.x, sy: pt.y };
-    }
-  }
-
-  function onMove(e) {
-    if (!STATE.drag) return;
-    e.preventDefault();
-    const pt = canvasCoords(e, cv);
-    const d = STATE.drag;
-
-    if (d.type === 'new') {
-      STATE.roi = normalizeROI({ x: d.sx, y: d.sy, w: pt.x - d.sx, h: pt.y - d.sy });
-    } else if (d.type === 'move') {
-      const dx = pt.x - d.sx, dy = pt.y - d.sy;
-      let nx = d.origROI.x + dx, ny = d.origROI.y + dy;
-      nx = Math.max(0, Math.min(nx, STATE.imgW - d.origROI.w));
-      ny = Math.max(0, Math.min(ny, STATE.imgH - d.origROI.h));
-      STATE.roi = { x: Math.round(nx), y: Math.round(ny), w: d.origROI.w, h: d.origROI.h };
-    } else if (d.type === 'resize') {
-      const r = { ...d.origROI };
-      const c = d.corner;
-      if (c.includes('r')) { r.w = pt.x - r.x; }
-      if (c.includes('l')) { r.w = (r.x + r.w) - pt.x; r.x = pt.x; }
-      if (c.includes('b')) { r.h = pt.y - r.y; }
-      if (c.includes('t')) { r.h = (r.y + r.h) - pt.y; r.y = pt.y; }
-      STATE.roi = normalizeROI(r);
-    }
-    updateROIStatus();
-    drawOverlay();
-  }
-
-  function onUp(e) {
-    if (!STATE.drag) return;
-    STATE.drag = null;
-    if (STATE.roi && STATE.roi.w > 5 && STATE.roi.h > 5) {
-      updateROIStatus();
-      drawOverlay();
-      if (!document.getElementById('runBtn').disabled) analyze();
-    }
-  }
-
-  cv.addEventListener('pointerdown', onDown);
-  cv.addEventListener('pointermove', onMove);
-  cv.addEventListener('pointerup', onUp);
-  cv.addEventListener('pointercancel', onUp);
-}
-
-function updateROIStatus() {
-  if (!STATE.roi) return;
-  const r = STATE.roi;
-  let txt = `ROI: ${r.w}x${r.h} px`;
-  if (STATE.pxPerMm) {
-    const mmW = (r.w / STATE.pxPerMm).toFixed(1), mmH = (r.h / STATE.pxPerMm).toFixed(1);
-    txt += ` (${mmW}x${mmH} mm)`;
-  }
-  document.getElementById('roiStatus').innerHTML = `<strong>${txt}</strong>`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -1416,7 +1395,6 @@ document.getElementById('coinSelect').addEventListener('change', () => {
 });
 
 syncSliders();
-initOverlayEvents();
 initCalModalEvents();
 </script>
 </body>
