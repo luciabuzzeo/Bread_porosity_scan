@@ -852,7 +852,8 @@ function syncSliders(){
     document.getElementById(vid).textContent=txt;
   });
 }
-document.querySelectorAll('input[type=range]').forEach(el=>el.addEventListener('input',syncSliders));
+function onSliderChange(){syncSliders();if(!document.getElementById('runBtn').disabled)analyze();}
+document.querySelectorAll('input[type=range]').forEach(el=>el.addEventListener('input',onSliderChange));
 
 function loadImg(file){
   const r=new FileReader();
