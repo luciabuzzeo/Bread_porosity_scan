@@ -70,15 +70,14 @@ BreadScan also outputs a **Digital Texture Fingerprint** — a multi-parameter s
 
 ## Quick Start
 
-**Option 1 — Use directly from GitHub Pages:**
-```
-https://<your-username>.github.io/breadscan/bread_porosity_analyzer_v5.html
-```
+**Option 1 — [Use directly in your browser (GitHub Pages)](https://luciabuzzeo.github.io/Bread_porosity_scan/bread_porosity_analyzer_v5.html)**
+
+No installation needed. Click the link above and start analyzing.
 
 **Option 2 — Clone and open locally:**
 ```bash
-git clone https://github.com/<your-username>/breadscan.git
-cd breadscan
+git clone https://github.com/luciabuzzeo/Bread_porosity_scan.git
+cd Bread_porosity_scan
 open bread_porosity_analyzer_v5.html   # macOS
 # or double-click the file in your file explorer
 ```
@@ -260,9 +259,9 @@ The algorithms and metrics in BreadScan are directly grounded in the following p
 If you use BreadScan in academic work, please cite as:
 
 ```
-[Your Name] (2025). BreadScan: A Browser-Based Digital Image Analysis Tool 
-for Bread Crumb Porosity. GitHub. 
-https://github.com/<your-username>/breadscan
+[Your Name] (2025). BreadScan: A Browser-Based Digital Image Analysis Tool
+for Bread Crumb Porosity. GitHub.
+https://github.com/luciabuzzeo/Bread_porosity_scan
 ```
 
 And cite the underlying algorithmic literature as appropriate (see [Literature References](#literature-references)).
