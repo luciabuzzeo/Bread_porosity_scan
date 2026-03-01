@@ -1,5 +1,7 @@
 # 🍞 BreadScan — Bread Crumb Porosity Analyzer
 
+[![Launch BreadScan](https://img.shields.io/badge/🍞_Launch_BreadScan-Open_App-c9a84c?style=for-the-badge)](https://luciabuzzeo.github.io/Bread_porosity_scan/bread_porosity_analyzer_v5.html)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-5.0-gold)](CHANGELOG.md)
 [![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)]()
