@@ -256,20 +256,6 @@ The algorithms and metrics in BreadScan are directly grounded in the following p
 
 ---
 
-## Suggested Citation
-
-If you use BreadScan in academic work, please cite as:
-
-```
-[Your Name] (2025). BreadScan: A Browser-Based Digital Image Analysis Tool
-for Bread Crumb Porosity. GitHub.
-https://github.com/luciabuzzeo/Bread_porosity_scan
-```
-
-And cite the underlying algorithmic literature as appropriate (see [Literature References](#literature-references)).
-
----
-
 ## Repository Structure
 
 ```
