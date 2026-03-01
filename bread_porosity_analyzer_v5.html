@@ -782,6 +782,7 @@ function initCalModalEvents() {
   // ── Pointer tracking for pinch + tap/drag ──
   let panStart = null; // {x, y, panX, panY} for single-pointer pan
   let didMove = false; // distinguish tap from drag
+  let tapPos = null;   // image coords captured at pointerdown for calibration taps
 
   function onDown(e) {
     e.preventDefault();
@@ -799,11 +800,16 @@ function initCalModalEvents() {
         startPanX: STATE.panX,
         startPanY: STATE.panY
       };
-      panStart = null; // cancel single-pointer pan
+      panStart = null; tapPos = null;
       return;
     }
 
     didMove = false;
+
+    // Capture press position for calibration taps (use down pos, not up pos)
+    if (STATE.phase === 'calibrating') {
+      tapPos = calCoords(e);
+    }
 
     // Single pointer: start pan if zoomed, or prepare for interaction
     if (STATE.zoom > 1) {
@@ -919,10 +925,10 @@ function initCalModalEvents() {
     }
 
     // Calibration tap: only if it was a short tap (no significant move)
-    if (STATE.phase === 'calibrating' && !didMove && pointers.size === 0) {
-      const pt = calCoords(e);
-      // If there's already a pending point, replace it
-      STATE.pendingPt = pt;
+    // Use tapPos (captured at pointerdown) — not pointerup position,
+    // because finger/mouse drifts slightly between press and release
+    if (STATE.phase === 'calibrating' && !didMove && pointers.size === 0 && tapPos) {
+      STATE.pendingPt = tapPos;
       document.getElementById('calPtActions').style.display = 'flex';
       if (STATE.calPts.length === 0) {
         document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Confirm this point?';
@@ -933,6 +939,7 @@ function initCalModalEvents() {
     }
 
     panStart = null;
+    tapPos = null;
     didMove = false;
   }
 
