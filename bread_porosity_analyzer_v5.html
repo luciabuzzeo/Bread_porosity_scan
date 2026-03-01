@@ -115,10 +115,66 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 .ok{color:var(--green)}.warn{color:var(--amber)}.lit{color:var(--blue)}
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
+/* Modal overlay */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-box{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:2rem 2.2rem;max-width:420px;width:90%;text-align:center}
+.modal-box h2{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--gold2);margin-bottom:.3rem}
+.modal-box p{font-size:.62rem;color:var(--muted);margin-bottom:1.4rem;line-height:1.6}
+.modal-choices{display:flex;flex-direction:column;gap:.55rem}
+.mbtn{padding:.75rem 1rem;border:1px solid var(--border);background:var(--s2);color:var(--text);font-family:'DM Mono',monospace;font-size:.65rem;border-radius:var(--r);cursor:pointer;transition:all .15s;text-align:left;line-height:1.5;display:flex;align-items:center;gap:.7rem}
+.mbtn:hover{border-color:var(--gold);background:rgba(201,168,76,.06)}
+.mbtn .mbtn-icon{font-size:1.1rem;flex-shrink:0}
+.mbtn .mbtn-label{color:var(--gold2);font-weight:500}
+.mbtn .mbtn-desc{color:var(--muted);font-size:.55rem}
+
+/* Canvas overlay container */
+.canvas-overlay-container{position:relative;display:inline-block;width:100%}
+.canvas-overlay-container canvas{width:100%;display:block}
+#cROI{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent!important;cursor:crosshair;z-index:2}
+
+/* Calibration & ROI sidebar sections */
+.cal-section,.roi-section{display:none}
+.cal-section.visible,.roi-section.visible{display:block}
+.cal-info{font-size:.58rem;color:var(--muted);line-height:1.7;margin-bottom:.5rem}
+.cal-info strong{color:var(--gold2)}
+.cal-result{font-size:.62rem;color:var(--green);margin-top:.4rem;line-height:1.5}
+.cal-input-row{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
+.cal-input-row label{font-size:.57rem;color:var(--muted);white-space:nowrap}
+.cal-input-row input,.cal-input-row select{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:.62rem;padding:.35rem .5rem;border-radius:var(--r);width:100%}
+.cal-input-row input:focus,.cal-input-row select:focus{outline:none;border-color:var(--gold)}
+.roi-toggle{display:flex;gap:.4rem;margin-bottom:.5rem}
+.roi-toggle .mbtn{flex:1;text-align:center;padding:.45rem;font-size:.58rem;justify-content:center}
+.roi-toggle .mbtn.on{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold2)}
+.roi-status{font-size:.56rem;color:var(--muted);line-height:1.5}
+.roi-status strong{color:var(--gold2)}
+
+/* Interactive canvas column - wider on mobile */
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.cw-interactive{grid-column:1/-1}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
+
+<!-- Upload mode modal -->
+<div class="modal-overlay" id="uploadModal" style="display:none">
+  <div class="modal-box">
+    <h2>What's in your photo?</h2>
+    <p>Choose how to calibrate for accurate measurements</p>
+    <div class="modal-choices">
+      <button class="mbtn" onclick="chooseMode('crumb')">
+        <span class="mbtn-icon">🍞</span>
+        <div><span class="mbtn-label">Crumb only</span><br><span class="mbtn-desc">No ruler or coin — analyze directly (px² units)</span></div>
+      </button>
+      <button class="mbtn" onclick="chooseMode('ruler')">
+        <span class="mbtn-icon">📏</span>
+        <div><span class="mbtn-label">Calibrate with ruler</span><br><span class="mbtn-desc">Click 2 points on ruler → enter distance in mm</span></div>
+      </button>
+      <button class="mbtn" onclick="chooseMode('coin')">
+        <span class="mbtn-icon">🪙</span>
+        <div><span class="mbtn-label">Calibrate with coin</span><br><span class="mbtn-desc">Click 2 points on coin edge → known diameter</span></div>
+      </button>
+    </div>
+  </div>
+</div>
 
 <header>
   <span class="logo">BreadScan</span>
@@ -140,6 +196,45 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <span class="upload-icon">🍞</span>
       <p><strong>Drop or click to upload</strong><br>Cross-section photo or flatbed scan<br>ROI: crumb only, no crust edges</p>
     </div>
+  </div>
+
+  <!-- Calibration section -->
+  <div class="cal-section" id="calSection">
+    <div class="slabel">Calibration</div>
+    <div class="cal-info" id="calInfo">Click <strong>2 points</strong> on the ruler in your image.</div>
+    <!-- Ruler mode input -->
+    <div id="rulerInput" style="display:none">
+      <div class="cal-input-row">
+        <label>Distance (mm):</label>
+        <input type="number" id="rulerMm" min="1" max="1000" value="50" step="1" placeholder="mm"/>
+      </div>
+    </div>
+    <!-- Coin mode input -->
+    <div id="coinInput" style="display:none">
+      <div class="cal-input-row">
+        <label>Coin:</label>
+        <select id="coinSelect">
+          <option value="25.75">1 Euro (25.75mm)</option>
+          <option value="23.25">2 Euro (23.25mm — inner)</option>
+          <option value="24.25">50 Cent (24.25mm)</option>
+          <option value="22.25">10 Cent (22.25mm)</option>
+          <option value="19.05">US Quarter (19.05mm — inner)</option>
+          <option value="17.91">US Nickel (17.91mm — inner)</option>
+          <option value="24.26">UK £1 (24.26mm — inner)</option>
+        </select>
+      </div>
+    </div>
+    <div class="cal-result" id="calResult"></div>
+  </div>
+
+  <!-- ROI section -->
+  <div class="roi-section" id="roiSection">
+    <div class="slabel">Region of Interest</div>
+    <div class="roi-toggle">
+      <button class="mbtn on" id="roiFull" onclick="setROIMode('full')">Full Image</button>
+      <button class="mbtn" id="roiDraw" onclick="setROIMode('draw')">Draw ROI</button>
+    </div>
+    <div class="roi-status" id="roiStatus">Using full image for analysis.</div>
   </div>
 
   <div>
@@ -240,10 +335,13 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 
   <!-- Canvas grid -->
   <div class="cgrid">
-    <div class="cw">
+    <div class="cw cw-interactive">
       <div class="clabel">Original<span class="ref"></span></div>
       <div id="ph0" class="ph">Upload</div>
-      <canvas id="c0" style="display:none"></canvas>
+      <div class="canvas-overlay-container" id="c0wrap" style="display:none">
+        <canvas id="c0"></canvas>
+        <canvas id="cROI"></canvas>
+      </div>
     </div>
     <div class="cw">
       <div class="clabel">CLAHE enhanced<span class="ref">Lassoued 2008</span></div>
@@ -292,6 +390,105 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 <canvas id="wk" style="display:none"></canvas>
 
 <script>
+// ══════════════════════════════════════════════════════
+//  0. STATE — calibration, ROI, interaction tracking
+// ══════════════════════════════════════════════════════
+
+const STATE = {
+  mode: 'crumb',       // 'crumb' | 'ruler' | 'coin'
+  phase: 'idle',       // 'idle' | 'calibrating' | 'roi' | 'done'
+  calPts: [],          // [{x,y}, {x,y}] in image-pixel coords
+  pxPerMm: null,       // pixels per mm (null = uncalibrated)
+  roi: null,           // {x,y,w,h} in image-pixel coords or null
+  roiMode: 'full',     // 'full' | 'draw'
+  drag: null,          // drag state for ROI interaction
+  imgW: 0, imgH: 0    // loaded image dimensions
+};
+
+function resetState() {
+  STATE.mode = 'crumb'; STATE.phase = 'idle';
+  STATE.calPts = []; STATE.pxPerMm = null;
+  STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
+  document.getElementById('calSection').classList.remove('visible');
+  document.getElementById('roiSection').classList.remove('visible');
+  document.getElementById('calResult').textContent = '';
+  document.getElementById('roiStatus').textContent = 'Using full image for analysis.';
+  setROIBtnState('full');
+  drawOverlay();
+}
+
+// ── Modal logic ──
+function showUploadModal() {
+  document.getElementById('uploadModal').style.display = 'flex';
+}
+
+function chooseMode(mode) {
+  document.getElementById('uploadModal').style.display = 'none';
+  STATE.mode = mode;
+  if (mode === 'crumb') {
+    STATE.phase = 'done';
+    document.getElementById('runBtn').disabled = false;
+    return;
+  }
+  // Calibration mode
+  STATE.phase = 'calibrating';
+  STATE.calPts = [];
+  STATE.pxPerMm = null;
+  document.getElementById('runBtn').disabled = true;
+  const calSec = document.getElementById('calSection');
+  calSec.classList.add('visible');
+  const rulerIn = document.getElementById('rulerInput');
+  const coinIn = document.getElementById('coinInput');
+  if (mode === 'ruler') {
+    document.getElementById('calInfo').innerHTML = 'Click <strong>2 points</strong> on the ruler in your image, then enter the distance.';
+    rulerIn.style.display = 'block'; coinIn.style.display = 'none';
+  } else {
+    document.getElementById('calInfo').innerHTML = 'Click <strong>2 points</strong> on opposite edges of the coin.';
+    rulerIn.style.display = 'none'; coinIn.style.display = 'block';
+  }
+  document.getElementById('calResult').textContent = '';
+  drawOverlay();
+}
+
+function calcCalibration() {
+  if (STATE.calPts.length < 2) return;
+  const [a, b] = STATE.calPts;
+  const distPx = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  let mmVal;
+  if (STATE.mode === 'ruler') {
+    mmVal = parseFloat(document.getElementById('rulerMm').value);
+    if (!mmVal || mmVal <= 0) return;
+  } else {
+    mmVal = parseFloat(document.getElementById('coinSelect').value);
+  }
+  STATE.pxPerMm = distPx / mmVal;
+  document.getElementById('calResult').innerHTML =
+    `&#10003; <strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> (${distPx.toFixed(1)}px &divide; ${mmVal}mm)`;
+  // Show ROI section
+  STATE.phase = 'roi';
+  document.getElementById('roiSection').classList.add('visible');
+  document.getElementById('runBtn').disabled = false;
+}
+
+function setROIMode(mode) {
+  STATE.roiMode = mode;
+  setROIBtnState(mode);
+  if (mode === 'full') {
+    STATE.roi = null;
+    document.getElementById('roiStatus').textContent = 'Using full image for analysis.';
+    drawOverlay();
+    if (!document.getElementById('runBtn').disabled) analyze();
+  } else {
+    document.getElementById('roiStatus').innerHTML = '<strong>Click and drag</strong> on the image to select the crumb region.';
+    drawOverlay();
+  }
+}
+
+function setROIBtnState(mode) {
+  document.getElementById('roiFull').classList.toggle('on', mode === 'full');
+  document.getElementById('roiDraw').classList.toggle('on', mode === 'draw');
+}
+
 // ══════════════════════════════════════════════════════
 //  1. GRAYSCALE & BLUR
 // ══════════════════════════════════════════════════════
@@ -595,11 +792,19 @@ function show(cid, phid){
 
 const CAT_COLORS = ['#7a9ab8','#7ab87a','#c9a84c','#d4824a','#c97a6a'];
 
-function renderHist(blobs, total) {
+function renderHist(blobs, total, cal) {
   const hEl=document.getElementById('hbars'), pEl=document.getElementById('pcats');
   hEl.innerHTML=''; pEl.innerHTML='';
   if(!blobs.length){hEl.innerHTML='<div style="font-size:.6rem;color:var(--muted);width:100%;text-align:center;align-self:center">No cells detected</div>';return;}
-  const cats=[
+  const u = cal ? 'mm²' : 'px²';
+  const cv = (px2) => cal ? px2 / (cal * cal) : px2;
+  const cats = cal ? [
+    {l:`Micro\n<${cv(50).toFixed(1)}${u}`,min:0,max:50},
+    {l:`Small\n${cv(50).toFixed(1)}–${cv(200).toFixed(0)}`,min:50,max:200},
+    {l:`Medium\n${cv(200).toFixed(0)}–${cv(1000).toFixed(0)}`,min:200,max:1000},
+    {l:`Large\n${cv(1000).toFixed(0)}–${cv(5000).toFixed(0)}`,min:1000,max:5000},
+    {l:`Macro\n>${cv(5000).toFixed(0)}${u}`,min:5000,max:Infinity}
+  ] : [
     {l:'Micro\n<50px²',min:0,max:50},
     {l:'Small\n50–200',min:50,max:200},
     {l:'Medium\n200–1k',min:200,max:1000},
@@ -625,33 +830,234 @@ function renderHist(blobs, total) {
   });
 }
 
-function renderFingerprint(blobs, totalPx, W, H) {
+function renderFingerprint(blobs, totalPx, W, H, cal) {
   const areas = blobs.map(b=>b.area);
   const voidFrac = blobs.length ? areas.reduce((s,a)=>s+a,0)/totalPx : 0;
-  const cellDensity = blobs.length / (totalPx/10000); // cells per 100px²
+  const u = cal ? 'mm²' : 'px²';
+  const toU = (px2) => cal ? px2 / (cal * cal) : px2;
+  const cellDensity = cal
+    ? blobs.length / (totalPx / (cal * cal) / 100)
+    : blobs.length / (totalPx / 10000);
+  const densU = cal ? 'cells/cm²' : 'cells/100px²';
   const meanA = blobs.length ? areas.reduce((s,a)=>s+a,0)/areas.length : 0;
   const variance = blobs.length ? areas.reduce((s,a)=>s+(a-meanA)**2,0)/areas.length : 0;
   const cv = meanA > 0 ? Math.sqrt(variance)/meanA : 0;
   const uniformity = Math.max(0, 1-cv);
-  // Wall thickness estimate: avg distance between cells ≈ sqrt(crumb_area / cells)
   const solidArea = totalPx - areas.reduce((s,a)=>s+a,0);
   const wallThick = blobs.length>0 ? Math.sqrt(solidArea/blobs.length) : 0;
-  // Macro pore fraction
+  const wallUnit = cal ? 'mm' : 'px';
+  const wallDisp = cal ? wallThick / cal : wallThick;
   const macroArea = areas.filter(a=>a>2000).reduce((s,a)=>s+a,0);
   const macroPct = macroArea/totalPx*100;
+  const macroThresh = cal ? toU(2000).toFixed(1)+u : '2000px²';
 
   const fmt=(v,d=1)=>isNaN(v)?'—':v.toFixed(d);
-  const setFP=(id,bid,val,maxVal,txt)=>{
+  const setFP=(id,bid,val,maxVal,txt,unitTxt)=>{
     document.getElementById(id).textContent=txt||fmt(val);
     const pct = Math.min(100, Math.round(val/maxVal*100));
     document.getElementById(bid).style.width=pct+'%';
+    if(unitTxt){const cell=document.getElementById(id).closest('.fp-cell');const uEl=cell.querySelector('.fp-unit');if(uEl)uEl.textContent=unitTxt;}
   };
-  setFP('fp0','fpb0',voidFrac*100,100, fmt(voidFrac*100)+'%');
-  setFP('fp1','fpb1',cellDensity,2, fmt(cellDensity,2));
-  setFP('fp2','fpb2',meanA,5000, Math.round(meanA));
-  setFP('fp3','fpb3',uniformity*100,100, fmt(uniformity*100)+'%');
-  setFP('fp4','fpb4',wallThick,50, fmt(wallThick,1)+'px');
-  setFP('fp5','fpb5',macroPct,50, fmt(macroPct)+'%');
+  setFP('fp0','fpb0',voidFrac*100,100, fmt(voidFrac*100)+'%','% crumb area as pores');
+  setFP('fp1','fpb1',cellDensity,2, fmt(cellDensity,2),densU+' (fineness)');
+  const meanDisp = cal ? toU(meanA).toFixed(2) : String(Math.round(meanA));
+  setFP('fp2','fpb2',cal?toU(meanA):meanA, cal?toU(5000):5000, meanDisp, u+' (coarseness)');
+  setFP('fp3','fpb3',uniformity*100,100, fmt(uniformity*100)+'%','1 − CV  (1=uniform)');
+  setFP('fp4','fpb4',wallDisp,cal?5:50, fmt(wallDisp,1)+wallUnit, wallUnit+' (estimated)');
+  setFP('fp5','fpb5',macroPct,50, fmt(macroPct)+'%','% large cells (>'+macroThresh+')');
+}
+
+// ══════════════════════════════════════════════════════
+//  8b. OVERLAY CANVAS — calibration points + ROI rect
+// ══════════════════════════════════════════════════════
+
+function canvasCoords(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+  const scaleX = STATE.imgW / rect.width;
+  const scaleY = STATE.imgH / rect.height;
+  return {
+    x: (t.clientX - rect.left) * scaleX,
+    y: (t.clientY - rect.top) * scaleY
+  };
+}
+
+function drawOverlay() {
+  const cv = document.getElementById('cROI');
+  if (!STATE.imgW || !STATE.imgH) return;
+  cv.width = STATE.imgW; cv.height = STATE.imgH;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // Draw calibration points and line
+  if (STATE.calPts.length > 0) {
+    ctx.fillStyle = '#e8c97a';
+    ctx.strokeStyle = '#e8c97a';
+    ctx.lineWidth = 2;
+    for (const p of STATE.calPts) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    if (STATE.calPts.length === 2) {
+      const [a, b] = STATE.calPts;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      // Distance label
+      const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      ctx.font = '14px DM Mono'; ctx.fillStyle = '#e8c97a';
+      ctx.textAlign = 'center';
+      const label = STATE.pxPerMm ? `${(dist / STATE.pxPerMm).toFixed(1)}mm` : `${dist.toFixed(0)}px`;
+      ctx.fillText(label, mx, my - 10);
+    }
+  }
+
+  // Draw ROI rectangle with dimmed outside
+  if (STATE.roi) {
+    const r = STATE.roi;
+    // Dim area outside ROI
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, cv.width, r.y);
+    ctx.fillRect(0, r.y, r.x, r.h);
+    ctx.fillRect(r.x + r.w, r.y, cv.width - r.x - r.w, r.h);
+    ctx.fillRect(0, r.y + r.h, cv.width, cv.height - r.y - r.h);
+    // ROI border
+    ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // Corner handles
+    const hs = 8;
+    ctx.fillStyle = '#c9a84c';
+    for (const [cx, cy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
+      ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    }
+    // Size label
+    if (STATE.pxPerMm) {
+      const mmW = (r.w / STATE.pxPerMm).toFixed(1), mmH = (r.h / STATE.pxPerMm).toFixed(1);
+      ctx.font = '12px DM Mono'; ctx.fillStyle = '#e8c97a'; ctx.textAlign = 'center';
+      ctx.fillText(`${mmW} x ${mmH} mm`, r.x + r.w / 2, r.y - 8);
+    }
+  }
+}
+
+function normalizeROI(r) {
+  let { x, y, w, h } = r;
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  x = Math.max(0, Math.min(x, STATE.imgW - 1));
+  y = Math.max(0, Math.min(y, STATE.imgH - 1));
+  w = Math.min(w, STATE.imgW - x);
+  h = Math.min(h, STATE.imgH - y);
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+function hitTestROI(px, py) {
+  if (!STATE.roi) return null;
+  const r = STATE.roi, margin = 12;
+  // Corners
+  const corners = [
+    { name: 'tl', cx: r.x, cy: r.y },
+    { name: 'tr', cx: r.x + r.w, cy: r.y },
+    { name: 'bl', cx: r.x, cy: r.y + r.h },
+    { name: 'br', cx: r.x + r.w, cy: r.y + r.h }
+  ];
+  for (const c of corners) {
+    if (Math.abs(px - c.cx) < margin && Math.abs(py - c.cy) < margin) return c.name;
+  }
+  // Inside → move
+  if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'move';
+  return null;
+}
+
+function initOverlayEvents() {
+  const cv = document.getElementById('cROI');
+
+  function onDown(e) {
+    e.preventDefault();
+    const pt = canvasCoords(e, cv);
+
+    // Calibration phase: place points
+    if (STATE.phase === 'calibrating') {
+      if (STATE.calPts.length < 2) {
+        STATE.calPts.push(pt);
+        drawOverlay();
+        if (STATE.calPts.length === 2) calcCalibration();
+      } else {
+        // Reset calibration points on re-click
+        STATE.calPts = [pt];
+        STATE.pxPerMm = null;
+        document.getElementById('calResult').textContent = '';
+        document.getElementById('roiSection').classList.remove('visible');
+        STATE.roi = null; STATE.phase = 'calibrating';
+        document.getElementById('runBtn').disabled = true;
+        drawOverlay();
+      }
+      return;
+    }
+
+    // ROI phase
+    if (STATE.roiMode !== 'draw') return;
+    const hit = hitTestROI(pt.x, pt.y);
+    if (hit === 'move') {
+      STATE.drag = { type: 'move', sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+    } else if (hit) {
+      STATE.drag = { type: 'resize', corner: hit, sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+    } else {
+      // New ROI
+      STATE.roi = { x: pt.x, y: pt.y, w: 0, h: 0 };
+      STATE.drag = { type: 'new', sx: pt.x, sy: pt.y };
+    }
+  }
+
+  function onMove(e) {
+    if (!STATE.drag) return;
+    e.preventDefault();
+    const pt = canvasCoords(e, cv);
+    const d = STATE.drag;
+
+    if (d.type === 'new') {
+      STATE.roi = normalizeROI({ x: d.sx, y: d.sy, w: pt.x - d.sx, h: pt.y - d.sy });
+    } else if (d.type === 'move') {
+      const dx = pt.x - d.sx, dy = pt.y - d.sy;
+      let nx = d.origROI.x + dx, ny = d.origROI.y + dy;
+      nx = Math.max(0, Math.min(nx, STATE.imgW - d.origROI.w));
+      ny = Math.max(0, Math.min(ny, STATE.imgH - d.origROI.h));
+      STATE.roi = { x: Math.round(nx), y: Math.round(ny), w: d.origROI.w, h: d.origROI.h };
+    } else if (d.type === 'resize') {
+      const r = { ...d.origROI };
+      const c = d.corner;
+      if (c.includes('r')) { r.w = pt.x - r.x; }
+      if (c.includes('l')) { r.w = (r.x + r.w) - pt.x; r.x = pt.x; }
+      if (c.includes('b')) { r.h = pt.y - r.y; }
+      if (c.includes('t')) { r.h = (r.y + r.h) - pt.y; r.y = pt.y; }
+      STATE.roi = normalizeROI(r);
+    }
+    updateROIStatus();
+    drawOverlay();
+  }
+
+  function onUp(e) {
+    if (!STATE.drag) return;
+    STATE.drag = null;
+    if (STATE.roi && STATE.roi.w > 5 && STATE.roi.h > 5) {
+      updateROIStatus();
+      drawOverlay();
+      if (!document.getElementById('runBtn').disabled) analyze();
+    }
+  }
+
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
+}
+
+function updateROIStatus() {
+  if (!STATE.roi) return;
+  const r = STATE.roi;
+  let txt = `ROI: ${r.w}x${r.h} px`;
+  if (STATE.pxPerMm) {
+    const mmW = (r.w / STATE.pxPerMm).toFixed(1), mmH = (r.h / STATE.pxPerMm).toFixed(1);
+    txt += ` (${mmW}x${mmH} mm)`;
+  }
+  document.getElementById('roiStatus').innerHTML = `<strong>${txt}</strong>`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -669,10 +1075,22 @@ function analyze() {
   const f3d    = parseFloat(document.getElementById('f3').value);
 
   const wk = document.getElementById('wk');
-  const {width:W, height:H} = wk;
-  const imgData = wk.getContext('2d').getImageData(0,0,W,H);
+  let W, H, imgData;
+  // ROI cropping: analyze only the selected region
+  if (STATE.roi && STATE.roi.w > 5 && STATE.roi.h > 5) {
+    const r = STATE.roi;
+    W = r.w; H = r.h;
+    imgData = wk.getContext('2d').getImageData(r.x, r.y, W, H);
+  } else {
+    W = wk.width; H = wk.height;
+    imgData = wk.getContext('2d').getImageData(0, 0, W, H);
+  }
+  const cal = STATE.pxPerMm;
+  const unit = cal ? 'mm²' : 'px²';
+  const toUnit = (px2) => cal ? px2 / (cal * cal) : px2;
 
-  log.push(`Image: ${W}×${H}  |  Type: ${type}  |  σ=${sigma}  |  CLAHE clip=${clip}`);
+  log.push(`Image: ${wk.width}×${wk.height}${STATE.roi ? ` → ROI: ${W}×${H}` : ''}  |  Type: ${type}  |  σ=${sigma}  |  CLAHE clip=${clip}`);
+  if (cal) log.push(`Calibration: ${cal.toFixed(2)} px/mm  |  Units: ${unit}`);
 
   // Step 1: Grayscale + blur
   let gray = toGray(imgData.data, W, H);
@@ -737,7 +1155,11 @@ function analyze() {
   const porePx  = valid.reduce((s,b)=>s+b.area,0);
   const vf2d    = porePx/totalPx;
   const vf3d    = Math.min(vf2d*f3d,1);
-  const density = valid.length / (totalPx/10000);
+  // Density: cells per cm² if calibrated, else cells per 100px²
+  const densityUnit = cal ? 'cells/cm²' : 'cells/100px²';
+  const density = cal
+    ? valid.length / (totalPx / (cal * cal) / 100)  // cells per cm² (100mm²)
+    : valid.length / (totalPx / 10000);
   const meanA2  = valid.length ? porePx/valid.length : 0;
   const cvAreas = (() => {
     if (!valid.length) return 0;
@@ -750,8 +1172,8 @@ function analyze() {
   log.push(`Void fraction (2D):   ${(vf2d*100).toFixed(2)}%`);
   log.push(`3D corrected (×${f3d}): ${(vf3d*100).toFixed(2)}%`);
   log.push(`Cell count:           ${valid.length}`);
-  log.push(`Cell density:         ${density.toFixed(3)} cells/100px²`);
-  log.push(`Mean cell area:       ${Math.round(meanA2)} px²`);
+  log.push(`Cell density:         ${density.toFixed(3)} ${densityUnit}`);
+  log.push(`Mean cell area:       ${cal ? toUnit(meanA2).toFixed(2)+' '+unit : Math.round(meanA2)+' px²'}`);
   log.push(`Cell uniformity (1-CV): ${(Math.max(0,1-cvAreas)*100).toFixed(1)}%`);
 
   // Quality check vs literature
@@ -784,19 +1206,26 @@ function analyze() {
   // For BSG: show histogram of raw grayscale (where threshold was computed)
   // For white: show histogram of CLAHE-enhanced (where Otsu was computed)
   buildHistCanvas('c4', type === 'white' ? enhanced : gray, tNorm, peakBin); show('c4','ph4');
-  renderHist(valid, totalPx);
-  renderFingerprint(valid, totalPx, W, H);
+  renderHist(valid, totalPx, cal);
+  renderFingerprint(valid, totalPx, W, H, cal);
 
   // Metrics bar
-  const fmt=v=>(v*100).toFixed(1)+'%';
-  const setM=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='mv'+(cls?' '+cls:'');e.closest('.mc').classList.remove('empty');};
+  const fmt2=v=>(v*100).toFixed(1)+'%';
+  const setM=(id,v,cls,muId,muTxt)=>{
+    const e=document.getElementById(id);e.textContent=v;e.className='mv'+(cls?' '+cls:'');e.closest('.mc').classList.remove('empty');
+    if(muId&&muTxt){const mu=e.closest('.mc').querySelector('.mu');if(mu)mu.textContent=muTxt;}
+  };
   const vfClass = (type==='white' && vf2d>=0.10&&vf2d<=0.40)?'ok':(type==='bsg' && vf2d>=0.08&&vf2d<=0.45)?'ok': vf2d<0.05?'lo':'';
-  setM('m0',fmt(vf2d),vfClass);
-  setM('m1',fmt(vf3d),'');
+  setM('m0',fmt2(vf2d),vfClass);
+  setM('m1',fmt2(vf3d),'');
   setM('m2',String(valid.length),'ok');
-  setM('m3',density.toFixed(2),'');
-  setM('m4',String(Math.round(meanA2)),'');
+  setM('m3',density.toFixed(2),'',null,densityUnit);
+  const meanDisp = cal ? toUnit(meanA2).toFixed(2) : String(Math.round(meanA2));
+  setM('m4',meanDisp,'',null,unit+' per pore');
   setM('m5',(Math.max(0,1-cvAreas)*100).toFixed(0)+'%','');
+  // Update metric unit labels
+  document.getElementById('m3').closest('.mc').querySelector('.mu').textContent = densityUnit;
+  document.getElementById('m4').closest('.mc').querySelector('.mu').textContent = unit + ' per pore';
 
   // Log
   const logEl=document.getElementById('logEl');
@@ -862,18 +1291,24 @@ function loadImg(file){
     img.onload=()=>{
       const MAX=650; let iw=img.width,ih=img.height;
       if(iw>MAX||ih>MAX){const ratio=Math.min(MAX/iw,MAX/ih);iw=Math.round(iw*ratio);ih=Math.round(ih*ratio);}
+      // Reset state for new image
+      resetState();
+      STATE.imgW = iw; STATE.imgH = ih;
       const wk=document.getElementById('wk');
       wk.width=iw; wk.height=ih;
       if(!wk.dataset.type) wk.dataset.type='white';
       wk.getContext('2d').drawImage(img,0,0,iw,ih);
       const c0=document.getElementById('c0'); c0.width=iw; c0.height=ih;
       c0.getContext('2d').drawImage(img,0,0,iw,ih);
-      document.getElementById('ph0').style.display='none'; c0.style.display='block';
+      document.getElementById('ph0').style.display='none';
+      document.getElementById('c0wrap').style.display='block';
       ['ph1','ph2','ph3','ph4'].forEach(id=>{document.getElementById(id).style.display='';});
       ['c1','c2','c3','c4'].forEach(id=>{document.getElementById(id).style.display='none';});
-      document.getElementById('runBtn').disabled=false;
-      document.getElementById('dz').querySelector('p').innerHTML=`<strong style="color:var(--green)">✓ ${file.name}</strong><br>${iw}×${ih} px — ready to analyze`;
-      document.getElementById('logEl').textContent='Image loaded — select bread type, then press Analyze.';
+      document.getElementById('runBtn').disabled=true;
+      document.getElementById('dz').querySelector('p').innerHTML=`<strong style="color:var(--green)">&#10003; ${file.name}</strong><br>${iw}×${ih} px`;
+      document.getElementById('logEl').textContent='Image loaded — choose calibration mode.';
+      // Show the modal
+      showUploadModal();
     };
     img.src=ev.target.result;
   };
@@ -887,7 +1322,17 @@ dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImg(f);});
 document.getElementById('runBtn').addEventListener('click',analyze);
 
+// Ruler mm input: recalculate on change
+document.getElementById('rulerMm').addEventListener('input', () => {
+  if (STATE.calPts.length === 2 && STATE.mode === 'ruler') calcCalibration();
+});
+// Coin dropdown: recalculate on change
+document.getElementById('coinSelect').addEventListener('change', () => {
+  if (STATE.calPts.length === 2 && STATE.mode === 'coin') calcCalibration();
+});
+
 syncSliders();
+initOverlayEvents();
 </script>
 </body>
 </html>
