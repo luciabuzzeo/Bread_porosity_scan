@@ -138,8 +138,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 .cal-modal-header h2{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--gold2);white-space:nowrap}
 .cal-modal-header .cal-steps{font-size:.58rem;color:var(--muted);line-height:1.5;text-align:right}
 .cal-modal-header .cal-steps strong{color:var(--gold2)}
-.cal-canvas-wrap{position:relative;width:100%;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg)}
-.cal-canvas-wrap canvas{width:100%;display:block}
+.cal-canvas-wrap{position:relative;width:100%;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg);touch-action:none}
 #cCalOverlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent!important;cursor:crosshair}
 .cal-controls{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
 .cal-input-row{display:flex;align-items:center;gap:.5rem}
@@ -163,6 +162,20 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 /* Skip ROI link */
 .cal-skip{font-size:.55rem;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:'DM Mono',monospace}
 .cal-skip:hover{color:var(--gold2)}
+
+/* Zoom inner wrapper */
+.cal-canvas-inner{transform-origin:0 0;position:relative;transition:transform 0.1s ease-out}
+.cal-canvas-inner canvas{width:100%;display:block}
+
+/* Pulsing ring for pending (unconfirmed) calibration point */
+@keyframes calPulse{0%,100%{opacity:.9;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+
+/* Point confirm/redo buttons in controls bar */
+.cal-pt-actions{display:flex;gap:.5rem;align-items:center}
+.cal-pt-confirm{padding:.45rem 1rem;background:var(--gold);color:var(--bg);border:none;border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.6rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .15s}
+.cal-pt-confirm:hover{background:var(--gold2)}
+.cal-pt-redo{padding:.45rem .8rem;background:var(--s2);color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.6rem;cursor:pointer;transition:all .15s}
+.cal-pt-redo:hover{border-color:var(--gold);color:var(--text)}
 
 /* Interactive canvas column - wider on mobile */
 @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.cw-interactive{grid-column:1/-1}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
@@ -199,9 +212,11 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <h2 id="calModalTitle">Calibrate with ruler</h2>
       <div class="cal-steps" id="calSteps"><strong>Step 1:</strong> Touch the first point</div>
     </div>
-    <div class="cal-canvas-wrap">
-      <canvas id="cCalImg"></canvas>
-      <canvas id="cCalOverlay"></canvas>
+    <div class="cal-canvas-wrap" id="calCanvasWrap">
+      <div class="cal-canvas-inner" id="calCanvasInner">
+        <canvas id="cCalImg"></canvas>
+        <canvas id="cCalOverlay"></canvas>
+      </div>
     </div>
     <div class="cal-controls">
       <!-- Ruler input -->
@@ -222,7 +237,12 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
           <option value="24.26">UK 1 pound (24.26mm)</option>
         </select>
       </div>
+      <div class="cal-pt-actions" id="calPtActions" style="display:none">
+        <button class="cal-pt-confirm" onclick="confirmCalPoint()">Confirm point</button>
+        <button class="cal-pt-redo" onclick="redoCalPoint()">Redo</button>
+      </div>
       <div class="cal-result" id="calResult"></div>
+      <button class="cal-skip" id="calRedoROIBtn" style="display:none" onclick="redoROI()">Redo ROI</button>
       <button class="cal-skip" id="calSkipBtn" style="display:none" onclick="confirmCalibration(true)">Skip — use full image</button>
       <button class="cal-confirm" id="calConfirmBtn" disabled onclick="confirmCalibration(false)">Confirm</button>
     </div>
@@ -420,13 +440,19 @@ const STATE = {
   roi: null,           // {x,y,w,h} in image-pixel coords or null
   roiMode: 'full',     // 'full' | 'draw'
   drag: null,          // drag state for ROI interaction
-  imgW: 0, imgH: 0    // loaded image dimensions
+  imgW: 0, imgH: 0,   // loaded image dimensions
+  zoom: 1,             // current zoom level (1–5)
+  panX: 0, panY: 0,   // pan offset in CSS-pixel coords
+  pendingPt: null,     // {x,y} — unconfirmed calibration point
+  pinch: null          // pinch gesture tracking
 };
 
 function resetState() {
   STATE.mode = 'crumb'; STATE.phase = 'idle';
   STATE.calPts = []; STATE.pxPerMm = null;
   STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
+  STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
+  STATE.pendingPt = null; STATE.pinch = null;
   document.getElementById('calBadge').classList.remove('visible');
   drawOverlay();
 }
@@ -453,6 +479,9 @@ function showCalModal(mode) {
   STATE.phase = 'calibrating';
   STATE.calPts = [];
   STATE.pxPerMm = null;
+  STATE.pendingPt = null;
+  STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
+  STATE.pinch = null;
 
   // Set title and controls
   const isRuler = mode === 'ruler';
@@ -461,10 +490,12 @@ function showCalModal(mode) {
   document.getElementById('calCoinInput').style.display = isRuler ? 'none' : 'flex';
   document.getElementById('calResult').textContent = '';
   document.getElementById('calConfirmBtn').disabled = true;
-  document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Touch the first point';
+  document.getElementById('calPtActions').style.display = 'none';
+  document.getElementById('calRedoROIBtn').style.display = 'none';
+  document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Tap the first point';
   document.getElementById('calHint').innerHTML = isRuler
-    ? '<strong>Tap two points</strong> on the ruler in the photo above'
-    : '<strong>Tap two points</strong> on opposite edges of the coin';
+    ? '<strong>Tap two points</strong> on the ruler in the photo — scroll/pinch to zoom'
+    : '<strong>Tap two points</strong> on opposite edges of the coin — scroll/pinch to zoom';
 
   // Draw the uploaded image on the modal canvas
   const wk = document.getElementById('wk');
@@ -476,6 +507,9 @@ function showCalModal(mode) {
   const cOv = document.getElementById('cCalOverlay');
   cOv.width = STATE.imgW; cOv.height = STATE.imgH;
   cOv.getContext('2d').clearRect(0, 0, cOv.width, cOv.height);
+
+  // Reset zoom transform
+  applyZoom();
 
   document.getElementById('calModal').style.display = 'flex';
 }
@@ -516,7 +550,7 @@ function drawCalOverlay() {
     }
   }
 
-  // Draw calibration points and line
+  // Draw confirmed calibration points and line
   if (STATE.calPts.length > 0) {
     ctx.fillStyle = '#e8c97a'; ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 3;
     for (const p of STATE.calPts) {
@@ -540,6 +574,40 @@ function drawCalOverlay() {
       ctx.fillText(label, mx, my - 10);
     }
   }
+
+  // Draw pending (unconfirmed) calibration point with distinct pulsing style
+  if (STATE.pendingPt) {
+    const p = STATE.pendingPt;
+    // Outer dashed ring
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Inner filled dot
+    ctx.fillStyle = 'rgba(232,201,122,0.7)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
+    // Crosshair
+    ctx.strokeStyle = 'rgba(232,201,122,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(p.x - 24, p.y); ctx.lineTo(p.x + 24, p.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x, p.y - 24); ctx.lineTo(p.x, p.y + 24); ctx.stroke();
+    // "Confirm?" label
+    ctx.font = 'bold 13px DM Mono'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(15,14,11,0.75)';
+    const lbl = 'Confirm?';
+    const tw2 = ctx.measureText(lbl).width;
+    ctx.fillRect(p.x - tw2 / 2 - 4, p.y - 36, tw2 + 8, 18);
+    ctx.fillStyle = '#e8c97a';
+    ctx.fillText(lbl, p.x, p.y - 22);
+
+    // Draw line from last confirmed point to pending point
+    if (STATE.calPts.length === 1) {
+      const a = STATE.calPts[0];
+      ctx.setLineDash([8, 6]);
+      ctx.strokeStyle = 'rgba(232,201,122,0.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
 }
 
 function calcCalibration() {
@@ -561,12 +629,59 @@ function calcCalibration() {
   drawCalOverlay();
 }
 
+function confirmCalPoint() {
+  if (!STATE.pendingPt) return;
+  STATE.calPts.push(STATE.pendingPt);
+  STATE.pendingPt = null;
+  document.getElementById('calPtActions').style.display = 'none';
+
+  if (STATE.calPts.length === 1) {
+    document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Tap the second point';
+  } else if (STATE.calPts.length === 2) {
+    calcCalibration();
+  }
+  drawCalOverlay();
+}
+
+function redoCalPoint() {
+  STATE.pendingPt = null;
+  document.getElementById('calPtActions').style.display = 'none';
+  // Restore step text
+  if (STATE.calPts.length === 0) {
+    document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Tap the first point';
+  } else {
+    document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Tap the second point';
+  }
+  drawCalOverlay();
+}
+
+function redoROI() {
+  STATE.roi = null;
+  STATE.drag = null;
+  document.getElementById('calRedoROIBtn').style.display = 'none';
+  document.getElementById('calConfirmBtn').disabled = true;
+  document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+  drawCalOverlay();
+}
+
+function applyZoom() {
+  const inner = document.getElementById('calCanvasInner');
+  if (!inner) return;
+  inner.style.transform = `scale(${STATE.zoom}) translate(${STATE.panX}px, ${STATE.panY}px)`;
+}
+
 function enterROIStep() {
   STATE.phase = 'roi';
   STATE.roi = null;
+  STATE.pendingPt = null;
+  // Reset zoom for ROI step
+  STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
+  applyZoom();
+  document.getElementById('calPtActions').style.display = 'none';
   document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
   document.getElementById('calHint').innerHTML = '<strong>Drag on the image</strong> to select the crumb region (exclude crust and reference objects)';
   document.getElementById('calSkipBtn').style.display = '';
+  document.getElementById('calRedoROIBtn').style.display = 'none';
   document.getElementById('calConfirmBtn').disabled = true;
   document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
 }
@@ -587,9 +702,11 @@ function confirmCalibration(skip) {
   drawOverlay();
 }
 
-function calHitTestROI(px, py) {
+function calHitTestROI(px, py, displayScale) {
   if (!STATE.roi) return null;
-  const r = STATE.roi, margin = 14;
+  const r = STATE.roi;
+  // Scale margin by inverse of display scale so it's always ~14 CSS pixels
+  const margin = 14 / (displayScale || 1);
   const corners = [
     { name: 'tl', cx: r.x, cy: r.y },
     { name: 'tr', cx: r.x + r.w, cy: r.y },
@@ -604,90 +721,219 @@ function calHitTestROI(px, py) {
 }
 
 function initCalModalEvents() {
+  const wrap = document.getElementById('calCanvasWrap');
   const cv = document.getElementById('cCalOverlay');
+  const pointers = new Map(); // track active pointers for pinch
 
   function calCoords(e) {
-    const rect = cv.getBoundingClientRect();
+    const rect = wrap.getBoundingClientRect();
     const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
-    const scaleX = STATE.imgW / rect.width;
-    const scaleY = STATE.imgH / rect.height;
-    return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+    // Convert from screen coords to image coords, accounting for zoom + pan
+    const cssX = t.clientX - rect.left;
+    const cssY = t.clientY - rect.top;
+    const baseScale = rect.width / STATE.imgW; // CSS pixels per image pixel (at zoom=1)
+    const imgX = (cssX / (baseScale * STATE.zoom)) - STATE.panX;
+    const imgY = (cssY / (baseScale * STATE.zoom)) - STATE.panY;
+    return { x: imgX, y: imgY };
   }
+
+  function getDisplayScale() {
+    const rect = wrap.getBoundingClientRect();
+    return (rect.width / STATE.imgW) * STATE.zoom;
+  }
+
+  // ── Zoom: scroll wheel (desktop) ──
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    const baseScale = rect.width / STATE.imgW;
+
+    // Image coords under cursor before zoom
+    const imgXBefore = (cssX / (baseScale * STATE.zoom)) - STATE.panX;
+    const imgYBefore = (cssY / (baseScale * STATE.zoom)) - STATE.panY;
+
+    // Adjust zoom
+    const delta = e.deltaY > 0 ? 0.85 : 1.18;
+    STATE.zoom = Math.max(1, Math.min(5, STATE.zoom * delta));
+
+    // Adjust pan so the image point under cursor stays in place
+    const imgXAfter = (cssX / (baseScale * STATE.zoom)) - STATE.panX;
+    const imgYAfter = (cssY / (baseScale * STATE.zoom)) - STATE.panY;
+    STATE.panX += imgXAfter - imgXBefore;
+    STATE.panY += imgYAfter - imgYBefore;
+
+    clampPan();
+    applyZoom();
+  }, { passive: false });
+
+  function clampPan() {
+    // Clamp pan so image doesn't go off-screen
+    if (STATE.zoom <= 1) { STATE.panX = 0; STATE.panY = 0; return; }
+    const maxPanX = 0;
+    const minPanX = -(STATE.imgW - STATE.imgW / STATE.zoom);
+    const maxPanY = 0;
+    const minPanY = -(STATE.imgH - STATE.imgH / STATE.zoom);
+    STATE.panX = Math.max(minPanX, Math.min(maxPanX, STATE.panX));
+    STATE.panY = Math.max(minPanY, Math.min(maxPanY, STATE.panY));
+  }
+
+  // ── Pointer tracking for pinch + tap/drag ──
+  let panStart = null; // {x, y, panX, panY} for single-pointer pan
+  let didMove = false; // distinguish tap from drag
 
   function onDown(e) {
     e.preventDefault();
-    const pt = calCoords(e);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    cv.setPointerCapture(e.pointerId);
 
-    // Step 1 & 2: calibration point taps
-    if (STATE.phase === 'calibrating') {
-      if (STATE.calPts.length < 2) {
-        STATE.calPts.push(pt);
-        drawCalOverlay();
-        if (STATE.calPts.length === 1) {
-          document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
-        }
-        if (STATE.calPts.length === 2) calcCalibration();
-      } else {
-        // Redo: reset to step 1
-        STATE.calPts = [pt];
-        STATE.pxPerMm = null;
-        STATE.roi = null;
-        document.getElementById('calResult').textContent = '';
-        document.getElementById('calConfirmBtn').disabled = true;
-        document.getElementById('calSkipBtn').style.display = 'none';
-        document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
-        drawCalOverlay();
-      }
+    // 2-finger pinch start
+    if (pointers.size === 2) {
+      const pts = [...pointers.values()];
+      STATE.pinch = {
+        dist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+        midX: (pts[0].x + pts[1].x) / 2,
+        midY: (pts[0].y + pts[1].y) / 2,
+        startZoom: STATE.zoom,
+        startPanX: STATE.panX,
+        startPanY: STATE.panY
+      };
+      panStart = null; // cancel single-pointer pan
       return;
     }
 
-    // Step 3: ROI drawing
-    if (STATE.phase === 'roi') {
-      const hit = calHitTestROI(pt.x, pt.y);
+    didMove = false;
+
+    // Single pointer: start pan if zoomed, or prepare for interaction
+    if (STATE.zoom > 1) {
+      panStart = { x: e.clientX, y: e.clientY, panX: STATE.panX, panY: STATE.panY };
+    }
+
+    // ROI phase: start drag immediately (no need for zoom pan in ROI since we reset zoom)
+    if (STATE.phase === 'roi' && pointers.size === 1) {
+      const pt = calCoords(e);
+      const ds = getDisplayScale();
+      const hit = calHitTestROI(pt.x, pt.y, ds);
       if (hit === 'move') {
         STATE.drag = { type: 'move', sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+        panStart = null; // ROI interaction takes priority
       } else if (hit) {
         STATE.drag = { type: 'resize', corner: hit, sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
+        panStart = null;
       } else {
         STATE.roi = { x: pt.x, y: pt.y, w: 0, h: 0 };
         STATE.drag = { type: 'new', sx: pt.x, sy: pt.y };
+        panStart = null;
       }
     }
   }
 
   function onMove(e) {
-    if (!STATE.drag || STATE.phase !== 'roi') return;
     e.preventDefault();
-    const pt = calCoords(e);
-    const d = STATE.drag;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (d.type === 'new') {
-      STATE.roi = normalizeROI({ x: d.sx, y: d.sy, w: pt.x - d.sx, h: pt.y - d.sy });
-    } else if (d.type === 'move') {
-      const dx = pt.x - d.sx, dy = pt.y - d.sy;
-      let nx = d.origROI.x + dx, ny = d.origROI.y + dy;
-      nx = Math.max(0, Math.min(nx, STATE.imgW - d.origROI.w));
-      ny = Math.max(0, Math.min(ny, STATE.imgH - d.origROI.h));
-      STATE.roi = { x: Math.round(nx), y: Math.round(ny), w: d.origROI.w, h: d.origROI.h };
-    } else if (d.type === 'resize') {
-      const r = { ...d.origROI };
-      const c = d.corner;
-      if (c.includes('r')) { r.w = pt.x - r.x; }
-      if (c.includes('l')) { r.w = (r.x + r.w) - pt.x; r.x = pt.x; }
-      if (c.includes('b')) { r.h = pt.y - r.y; }
-      if (c.includes('t')) { r.h = (r.y + r.h) - pt.y; r.y = pt.y; }
-      STATE.roi = normalizeROI(r);
+    // ── Pinch-to-zoom (2 pointers) ──
+    if (pointers.size === 2 && STATE.pinch) {
+      const pts = [...pointers.values()];
+      const newDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const ratio = newDist / STATE.pinch.dist;
+      STATE.zoom = Math.max(1, Math.min(5, STATE.pinch.startZoom * ratio));
+
+      // Pan to keep pinch midpoint stable
+      const rect = wrap.getBoundingClientRect();
+      const baseScale = rect.width / STATE.imgW;
+      const newMidX = (pts[0].x + pts[1].x) / 2;
+      const newMidY = (pts[0].y + pts[1].y) / 2;
+      const midDx = (newMidX - STATE.pinch.midX) / (baseScale * STATE.zoom);
+      const midDy = (newMidY - STATE.pinch.midY) / (baseScale * STATE.zoom);
+      STATE.panX = STATE.pinch.startPanX + midDx;
+      STATE.panY = STATE.pinch.startPanY + midDy;
+
+      clampPan();
+      applyZoom();
+      return;
     }
-    drawCalOverlay();
+
+    // ── ROI drag ──
+    if (STATE.drag && STATE.phase === 'roi') {
+      didMove = true;
+      const pt = calCoords(e);
+      const d = STATE.drag;
+
+      if (d.type === 'new') {
+        STATE.roi = normalizeROI({ x: d.sx, y: d.sy, w: pt.x - d.sx, h: pt.y - d.sy });
+      } else if (d.type === 'move') {
+        const dx = pt.x - d.sx, dy = pt.y - d.sy;
+        let nx = d.origROI.x + dx, ny = d.origROI.y + dy;
+        nx = Math.max(0, Math.min(nx, STATE.imgW - d.origROI.w));
+        ny = Math.max(0, Math.min(ny, STATE.imgH - d.origROI.h));
+        STATE.roi = { x: Math.round(nx), y: Math.round(ny), w: d.origROI.w, h: d.origROI.h };
+      } else if (d.type === 'resize') {
+        // Use current pointer position, not delta from origROI
+        const r = { ...d.origROI };
+        const c = d.corner;
+        // For each corner, move the corresponding edge to the pointer
+        if (c === 'br') { r.w = pt.x - r.x; r.h = pt.y - r.y; }
+        else if (c === 'bl') { const right = r.x + r.w; r.x = pt.x; r.w = right - pt.x; r.h = pt.y - r.y; }
+        else if (c === 'tr') { const bottom = r.y + r.h; r.w = pt.x - r.x; r.y = pt.y; r.h = bottom - pt.y; }
+        else if (c === 'tl') { const right = r.x + r.w; const bottom = r.y + r.h; r.x = pt.x; r.y = pt.y; r.w = right - pt.x; r.h = bottom - pt.y; }
+        STATE.roi = normalizeROI(r);
+      }
+      drawCalOverlay();
+      return;
+    }
+
+    // ── Pan (when zoomed) ──
+    if (panStart && STATE.zoom > 1 && pointers.size === 1) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didMove = true;
+      const rect = wrap.getBoundingClientRect();
+      const baseScale = rect.width / STATE.imgW;
+      STATE.panX = panStart.panX + dx / (baseScale * STATE.zoom);
+      STATE.panY = panStart.panY + dy / (baseScale * STATE.zoom);
+      clampPan();
+      applyZoom();
+    }
   }
 
-  function onUp() {
-    if (!STATE.drag) return;
-    STATE.drag = null;
-    if (STATE.roi && STATE.roi.w > 10 && STATE.roi.h > 10) {
-      document.getElementById('calConfirmBtn').disabled = false;
-      document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
+  function onUp(e) {
+    pointers.delete(e.pointerId);
+
+    // Pinch end
+    if (STATE.pinch && pointers.size < 2) {
+      STATE.pinch = null;
+      return;
     }
+
+    // ROI drag end
+    if (STATE.drag) {
+      STATE.drag = null;
+      if (STATE.roi && STATE.roi.w > 10 && STATE.roi.h > 10) {
+        document.getElementById('calConfirmBtn').disabled = false;
+        document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
+        document.getElementById('calRedoROIBtn').style.display = '';
+      }
+      return;
+    }
+
+    // Calibration tap: only if it was a short tap (no significant move)
+    if (STATE.phase === 'calibrating' && !didMove && pointers.size === 0) {
+      const pt = calCoords(e);
+      // If there's already a pending point, replace it
+      STATE.pendingPt = pt;
+      document.getElementById('calPtActions').style.display = 'flex';
+      if (STATE.calPts.length === 0) {
+        document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Confirm this point?';
+      } else if (STATE.calPts.length === 1) {
+        document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Confirm this point?';
+      }
+      drawCalOverlay();
+    }
+
+    panStart = null;
+    didMove = false;
   }
 
   cv.addEventListener('pointerdown', onDown);
