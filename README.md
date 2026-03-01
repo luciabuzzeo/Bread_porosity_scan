@@ -23,8 +23,6 @@
 - [Methodology](#methodology)
 - [Limitations](#limitations)
 - [Literature References](#literature-references)
-- [Suggested Citation](#suggested-citation)
-- [License](#license)
 
 ---
 
@@ -269,10 +267,3 @@ breadscan/
     └── bsg_bread_example.jpg         ← Sample BSG bread cross-section
 ```
 
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for full text.
-
-Free to use, modify, and distribute for academic and commercial purposes with attribution.
