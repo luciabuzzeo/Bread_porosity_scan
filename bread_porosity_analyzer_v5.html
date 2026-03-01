@@ -132,21 +132,40 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 .canvas-overlay-container canvas{width:100%;display:block}
 #cROI{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent!important;cursor:crosshair;z-index:2}
 
-/* Calibration & ROI sidebar sections */
-.cal-section,.roi-section{display:none}
-.cal-section.visible,.roi-section.visible{display:block}
-.cal-info{font-size:.58rem;color:var(--muted);line-height:1.7;margin-bottom:.5rem}
-.cal-info strong{color:var(--gold2)}
-.cal-result{font-size:.62rem;color:var(--green);margin-top:.4rem;line-height:1.5}
-.cal-input-row{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
+/* Calibration modal */
+.cal-modal-box{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:700px;width:95%;display:flex;flex-direction:column;gap:1rem}
+.cal-modal-header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
+.cal-modal-header h2{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--gold2);white-space:nowrap}
+.cal-modal-header .cal-steps{font-size:.58rem;color:var(--muted);line-height:1.5;text-align:right}
+.cal-modal-header .cal-steps strong{color:var(--gold2)}
+.cal-canvas-wrap{position:relative;width:100%;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg)}
+.cal-canvas-wrap canvas{width:100%;display:block}
+#cCalOverlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:transparent!important;cursor:crosshair}
+.cal-controls{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.cal-input-row{display:flex;align-items:center;gap:.5rem}
 .cal-input-row label{font-size:.57rem;color:var(--muted);white-space:nowrap}
-.cal-input-row input,.cal-input-row select{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:.62rem;padding:.35rem .5rem;border-radius:var(--r);width:100%}
+.cal-input-row input,.cal-input-row select{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:.62rem;padding:.35rem .5rem;border-radius:var(--r)}
+.cal-input-row input{width:80px}
+.cal-input-row select{width:auto}
 .cal-input-row input:focus,.cal-input-row select:focus{outline:none;border-color:var(--gold)}
+.cal-result{font-size:.62rem;color:var(--green);line-height:1.5;flex:1}
+.cal-result strong{color:var(--green)}
+.cal-confirm{padding:.55rem 1.4rem;background:var(--gold);color:var(--bg);border:none;border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:background .15s;margin-left:auto}
+.cal-confirm:hover{background:var(--gold2)}
+.cal-confirm:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+.cal-hint{font-size:.55rem;color:var(--muted);text-align:center;padding:.3rem;line-height:1.5}
+.cal-hint strong{color:var(--gold2)}
+
+/* ROI sidebar section */
+.roi-section{display:none}
+.roi-section.visible{display:block}
 .roi-toggle{display:flex;gap:.4rem;margin-bottom:.5rem}
 .roi-toggle .mbtn{flex:1;text-align:center;padding:.45rem;font-size:.58rem;justify-content:center}
 .roi-toggle .mbtn.on{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold2)}
 .roi-status{font-size:.56rem;color:var(--muted);line-height:1.5}
 .roi-status strong{color:var(--gold2)}
+.cal-badge{font-size:.56rem;background:var(--s3);border:1px solid rgba(122,184,122,.2);border-radius:var(--r);padding:.4rem .6rem;color:var(--green);line-height:1.5;margin-bottom:.5rem}
+.cal-badge strong{color:var(--green)}
 
 /* Interactive canvas column - wider on mobile */
 @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}.cgrid{grid-template-columns:repeat(3,1fr)}.cw-interactive{grid-column:1/-1}.metrics{grid-template-columns:repeat(3,1fr)}.fp-grid{grid-template-columns:repeat(2,1fr)}}
@@ -166,13 +185,50 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       </button>
       <button class="mbtn" onclick="chooseMode('ruler')">
         <span class="mbtn-icon">📏</span>
-        <div><span class="mbtn-label">Calibrate with ruler</span><br><span class="mbtn-desc">Click 2 points on ruler → enter distance in mm</span></div>
+        <div><span class="mbtn-label">Calibrate with ruler</span><br><span class="mbtn-desc">Touch 2 points on the ruler in next screen</span></div>
       </button>
       <button class="mbtn" onclick="chooseMode('coin')">
         <span class="mbtn-icon">🪙</span>
-        <div><span class="mbtn-label">Calibrate with coin</span><br><span class="mbtn-desc">Click 2 points on coin edge → known diameter</span></div>
+        <div><span class="mbtn-label">Calibrate with coin</span><br><span class="mbtn-desc">Touch 2 edges of the coin in next screen</span></div>
       </button>
     </div>
+  </div>
+</div>
+
+<!-- Calibration modal — large image for touching points -->
+<div class="modal-overlay" id="calModal" style="display:none">
+  <div class="cal-modal-box">
+    <div class="cal-modal-header">
+      <h2 id="calModalTitle">Calibrate with ruler</h2>
+      <div class="cal-steps" id="calSteps"><strong>Step 1:</strong> Touch the first point</div>
+    </div>
+    <div class="cal-canvas-wrap">
+      <canvas id="cCalImg"></canvas>
+      <canvas id="cCalOverlay"></canvas>
+    </div>
+    <div class="cal-controls">
+      <!-- Ruler input -->
+      <div class="cal-input-row" id="calRulerInput" style="display:none">
+        <label>Distance (mm):</label>
+        <input type="number" id="rulerMm" min="1" max="1000" value="50" step="1"/>
+      </div>
+      <!-- Coin dropdown -->
+      <div class="cal-input-row" id="calCoinInput" style="display:none">
+        <label>Coin:</label>
+        <select id="coinSelect">
+          <option value="25.75">1 Euro (25.75mm)</option>
+          <option value="23.25">2 Euro (23.25mm)</option>
+          <option value="24.25">50 Cent (24.25mm)</option>
+          <option value="22.25">10 Cent (22.25mm)</option>
+          <option value="19.05">US Quarter (19.05mm)</option>
+          <option value="17.91">US Nickel (17.91mm)</option>
+          <option value="24.26">UK 1 pound (24.26mm)</option>
+        </select>
+      </div>
+      <div class="cal-result" id="calResult"></div>
+      <button class="cal-confirm" id="calConfirmBtn" disabled onclick="confirmCalibration()">Confirm</button>
+    </div>
+    <div class="cal-hint" id="calHint"><strong>Tap two points</strong> on the ruler/coin in the photo above. Tap again to redo.</div>
   </div>
 </div>
 
@@ -198,38 +254,10 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
     </div>
   </div>
 
-  <!-- Calibration section -->
-  <div class="cal-section" id="calSection">
-    <div class="slabel">Calibration</div>
-    <div class="cal-info" id="calInfo">Click <strong>2 points</strong> on the ruler in your image.</div>
-    <!-- Ruler mode input -->
-    <div id="rulerInput" style="display:none">
-      <div class="cal-input-row">
-        <label>Distance (mm):</label>
-        <input type="number" id="rulerMm" min="1" max="1000" value="50" step="1" placeholder="mm"/>
-      </div>
-    </div>
-    <!-- Coin mode input -->
-    <div id="coinInput" style="display:none">
-      <div class="cal-input-row">
-        <label>Coin:</label>
-        <select id="coinSelect">
-          <option value="25.75">1 Euro (25.75mm)</option>
-          <option value="23.25">2 Euro (23.25mm — inner)</option>
-          <option value="24.25">50 Cent (24.25mm)</option>
-          <option value="22.25">10 Cent (22.25mm)</option>
-          <option value="19.05">US Quarter (19.05mm — inner)</option>
-          <option value="17.91">US Nickel (17.91mm — inner)</option>
-          <option value="24.26">UK £1 (24.26mm — inner)</option>
-        </select>
-      </div>
-    </div>
-    <div class="cal-result" id="calResult"></div>
-  </div>
-
-  <!-- ROI section -->
+  <!-- ROI section (shown after calibration) -->
   <div class="roi-section" id="roiSection">
-    <div class="slabel">Region of Interest</div>
+    <div class="slabel">Calibration & ROI</div>
+    <div class="cal-badge" id="calBadge"></div>
     <div class="roi-toggle">
       <button class="mbtn on" id="roiFull" onclick="setROIMode('full')">Full Image</button>
       <button class="mbtn" id="roiDraw" onclick="setROIMode('draw')">Draw ROI</button>
@@ -409,15 +437,13 @@ function resetState() {
   STATE.mode = 'crumb'; STATE.phase = 'idle';
   STATE.calPts = []; STATE.pxPerMm = null;
   STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
-  document.getElementById('calSection').classList.remove('visible');
   document.getElementById('roiSection').classList.remove('visible');
-  document.getElementById('calResult').textContent = '';
   document.getElementById('roiStatus').textContent = 'Using full image for analysis.';
   setROIBtnState('full');
   drawOverlay();
 }
 
-// ── Modal logic ──
+// ── Upload choice modal ──
 function showUploadModal() {
   document.getElementById('uploadModal').style.display = 'flex';
 }
@@ -430,24 +456,74 @@ function chooseMode(mode) {
     document.getElementById('runBtn').disabled = false;
     return;
   }
-  // Calibration mode
+  // Show calibration modal with the image
+  showCalModal(mode);
+}
+
+// ── Calibration modal ──
+function showCalModal(mode) {
   STATE.phase = 'calibrating';
   STATE.calPts = [];
   STATE.pxPerMm = null;
-  document.getElementById('runBtn').disabled = true;
-  const calSec = document.getElementById('calSection');
-  calSec.classList.add('visible');
-  const rulerIn = document.getElementById('rulerInput');
-  const coinIn = document.getElementById('coinInput');
-  if (mode === 'ruler') {
-    document.getElementById('calInfo').innerHTML = 'Click <strong>2 points</strong> on the ruler in your image, then enter the distance.';
-    rulerIn.style.display = 'block'; coinIn.style.display = 'none';
-  } else {
-    document.getElementById('calInfo').innerHTML = 'Click <strong>2 points</strong> on opposite edges of the coin.';
-    rulerIn.style.display = 'none'; coinIn.style.display = 'block';
-  }
+
+  // Set title and controls
+  const isRuler = mode === 'ruler';
+  document.getElementById('calModalTitle').textContent = isRuler ? 'Calibrate with ruler' : 'Calibrate with coin';
+  document.getElementById('calRulerInput').style.display = isRuler ? 'flex' : 'none';
+  document.getElementById('calCoinInput').style.display = isRuler ? 'none' : 'flex';
   document.getElementById('calResult').textContent = '';
-  drawOverlay();
+  document.getElementById('calConfirmBtn').disabled = true;
+  document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Touch the first point';
+  document.getElementById('calHint').innerHTML = isRuler
+    ? '<strong>Tap two points</strong> on the ruler in the photo above'
+    : '<strong>Tap two points</strong> on opposite edges of the coin';
+
+  // Draw the uploaded image on the modal canvas
+  const wk = document.getElementById('wk');
+  const cImg = document.getElementById('cCalImg');
+  cImg.width = STATE.imgW; cImg.height = STATE.imgH;
+  cImg.getContext('2d').drawImage(wk, 0, 0);
+
+  // Clear overlay
+  const cOv = document.getElementById('cCalOverlay');
+  cOv.width = STATE.imgW; cOv.height = STATE.imgH;
+  cOv.getContext('2d').clearRect(0, 0, cOv.width, cOv.height);
+
+  document.getElementById('calModal').style.display = 'flex';
+}
+
+function drawCalOverlay() {
+  const cv = document.getElementById('cCalOverlay');
+  if (!STATE.imgW || !STATE.imgH) return;
+  cv.width = STATE.imgW; cv.height = STATE.imgH;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  if (STATE.calPts.length > 0) {
+    ctx.fillStyle = '#e8c97a'; ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 3;
+    for (const p of STATE.calPts) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
+      // Crosshair
+      ctx.strokeStyle = 'rgba(232,201,122,0.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x - 18, p.y); ctx.lineTo(p.x + 18, p.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - 18); ctx.lineTo(p.x, p.y + 18); ctx.stroke();
+      ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 3;
+    }
+    if (STATE.calPts.length === 2) {
+      const [a, b] = STATE.calPts;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      ctx.font = 'bold 16px DM Mono'; ctx.fillStyle = '#e8c97a'; ctx.textAlign = 'center';
+      const label = STATE.pxPerMm ? `${(dist / STATE.pxPerMm).toFixed(1)}mm` : `${dist.toFixed(0)}px`;
+      // Background for text readability
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(15,14,11,0.7)';
+      ctx.fillRect(mx - tw/2 - 4, my - 24, tw + 8, 20);
+      ctx.fillStyle = '#e8c97a';
+      ctx.fillText(label, mx, my - 10);
+    }
+  }
 }
 
 function calcCalibration() {
@@ -463,13 +539,61 @@ function calcCalibration() {
   }
   STATE.pxPerMm = distPx / mmVal;
   document.getElementById('calResult').innerHTML =
-    `&#10003; <strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> (${distPx.toFixed(1)}px &divide; ${mmVal}mm)`;
-  // Show ROI section
-  STATE.phase = 'roi';
-  document.getElementById('roiSection').classList.add('visible');
-  document.getElementById('runBtn').disabled = false;
+    `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong>`;
+  document.getElementById('calConfirmBtn').disabled = false;
+  document.getElementById('calSteps').innerHTML = '<strong>Done!</strong> Confirm or tap to redo';
+  drawCalOverlay();
 }
 
+function confirmCalibration() {
+  if (!STATE.pxPerMm) return;
+  document.getElementById('calModal').style.display = 'none';
+  STATE.phase = 'roi';
+  // Show ROI section with calibration badge
+  const roiSec = document.getElementById('roiSection');
+  roiSec.classList.add('visible');
+  document.getElementById('calBadge').innerHTML =
+    `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> — calibrated with ${STATE.mode}`;
+  document.getElementById('runBtn').disabled = false;
+  drawOverlay();
+}
+
+function initCalModalEvents() {
+  const cv = document.getElementById('cCalOverlay');
+
+  function calCoords(e) {
+    const rect = cv.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+    const scaleX = STATE.imgW / rect.width;
+    const scaleY = STATE.imgH / rect.height;
+    return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+  }
+
+  cv.addEventListener('pointerdown', (e) => {
+    if (STATE.phase !== 'calibrating') return;
+    e.preventDefault();
+    const pt = calCoords(e);
+
+    if (STATE.calPts.length < 2) {
+      STATE.calPts.push(pt);
+      drawCalOverlay();
+      if (STATE.calPts.length === 1) {
+        document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
+      }
+      if (STATE.calPts.length === 2) calcCalibration();
+    } else {
+      // Redo: reset points
+      STATE.calPts = [pt];
+      STATE.pxPerMm = null;
+      document.getElementById('calResult').textContent = '';
+      document.getElementById('calConfirmBtn').disabled = true;
+      document.getElementById('calSteps').innerHTML = '<strong>Step 2:</strong> Touch the second point';
+      drawCalOverlay();
+    }
+  });
+}
+
+// ── ROI mode ──
 function setROIMode(mode) {
   STATE.roiMode = mode;
   setROIBtnState(mode);
@@ -889,27 +1013,6 @@ function drawOverlay() {
   const ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, cv.width, cv.height);
 
-  // Draw calibration points and line
-  if (STATE.calPts.length > 0) {
-    ctx.fillStyle = '#e8c97a';
-    ctx.strokeStyle = '#e8c97a';
-    ctx.lineWidth = 2;
-    for (const p of STATE.calPts) {
-      ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
-    }
-    if (STATE.calPts.length === 2) {
-      const [a, b] = STATE.calPts;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      // Distance label
-      const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      ctx.font = '14px DM Mono'; ctx.fillStyle = '#e8c97a';
-      ctx.textAlign = 'center';
-      const label = STATE.pxPerMm ? `${(dist / STATE.pxPerMm).toFixed(1)}mm` : `${dist.toFixed(0)}px`;
-      ctx.fillText(label, mx, my - 10);
-    }
-  }
-
   // Draw ROI rectangle with dimmed outside
   if (STATE.roi) {
     const r = STATE.roi;
@@ -973,26 +1076,7 @@ function initOverlayEvents() {
     e.preventDefault();
     const pt = canvasCoords(e, cv);
 
-    // Calibration phase: place points
-    if (STATE.phase === 'calibrating') {
-      if (STATE.calPts.length < 2) {
-        STATE.calPts.push(pt);
-        drawOverlay();
-        if (STATE.calPts.length === 2) calcCalibration();
-      } else {
-        // Reset calibration points on re-click
-        STATE.calPts = [pt];
-        STATE.pxPerMm = null;
-        document.getElementById('calResult').textContent = '';
-        document.getElementById('roiSection').classList.remove('visible');
-        STATE.roi = null; STATE.phase = 'calibrating';
-        document.getElementById('runBtn').disabled = true;
-        drawOverlay();
-      }
-      return;
-    }
-
-    // ROI phase
+    // ROI drawing only (calibration is handled in the cal modal)
     if (STATE.roiMode !== 'draw') return;
     const hit = hitTestROI(pt.x, pt.y);
     if (hit === 'move') {
@@ -1322,17 +1406,18 @@ dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImg(f);});
 document.getElementById('runBtn').addEventListener('click',analyze);
 
-// Ruler mm input: recalculate on change
+// Ruler mm input: recalculate on change (inside cal modal)
 document.getElementById('rulerMm').addEventListener('input', () => {
   if (STATE.calPts.length === 2 && STATE.mode === 'ruler') calcCalibration();
 });
-// Coin dropdown: recalculate on change
+// Coin dropdown: recalculate on change (inside cal modal)
 document.getElementById('coinSelect').addEventListener('change', () => {
   if (STATE.calPts.length === 2 && STATE.mode === 'coin') calcCalibration();
 });
 
 syncSliders();
 initOverlayEvents();
+initCalModalEvents();
 </script>
 </body>
 </html>
