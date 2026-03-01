@@ -626,13 +626,12 @@ function renderHist(blobs, total) {
 }
 
 function renderFingerprint(blobs, totalPx, W, H) {
-  if(!blobs.length) return;
   const areas = blobs.map(b=>b.area);
-  const voidFrac = areas.reduce((s,a)=>s+a,0)/totalPx;
+  const voidFrac = blobs.length ? areas.reduce((s,a)=>s+a,0)/totalPx : 0;
   const cellDensity = blobs.length / (totalPx/10000); // cells per 100px²
-  const meanA = areas.reduce((s,a)=>s+a,0)/areas.length;
-  const variance = areas.reduce((s,a)=>s+(a-meanA)**2,0)/areas.length;
-  const cv = Math.sqrt(variance)/meanA;
+  const meanA = blobs.length ? areas.reduce((s,a)=>s+a,0)/areas.length : 0;
+  const variance = blobs.length ? areas.reduce((s,a)=>s+(a-meanA)**2,0)/areas.length : 0;
+  const cv = meanA > 0 ? Math.sqrt(variance)/meanA : 0;
   const uniformity = Math.max(0, 1-cv);
   // Wall thickness estimate: avg distance between cells ≈ sqrt(crumb_area / cells)
   const solidArea = totalPx - areas.reduce((s,a)=>s+a,0);
