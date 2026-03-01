@@ -222,6 +222,22 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
     <div class="mc empty"><div class="ml">Uniformity</div><div class="mv" id="m5">—</div><div class="mu">CV of cell areas %</div></div>
   </div>
 
+  <!-- Digital Texture Fingerprint -->
+  <div class="fp-wrap">
+    <div class="fp-head">
+      <span class="fp-title">Digital Texture Fingerprint</span>
+      <span class="fp-ref">after Ruderman et al. (2025) Bread Texture Analyser · ScienceDirect</span>
+    </div>
+    <div class="fp-grid" id="fpGrid">
+      <div class="fp-cell"><div class="fp-param">Void Fraction</div><div class="fp-val" id="fp0">—</div><div class="fp-unit">% crumb area as pores</div><div class="fp-bar"><div class="fp-fill" id="fpb0" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Cell Density</div><div class="fp-val" id="fp1">—</div><div class="fp-unit">cells/100px² (fineness)</div><div class="fp-bar"><div class="fp-fill" id="fpb1" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Mean Cell Area</div><div class="fp-val" id="fp2">—</div><div class="fp-unit">px² (coarseness)</div><div class="fp-bar"><div class="fp-fill" id="fpb2" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Cell Uniformity</div><div class="fp-val" id="fp3">—</div><div class="fp-unit">1 − CV  (1=uniform)</div><div class="fp-bar"><div class="fp-fill" id="fpb3" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Wall Thickness</div><div class="fp-val" id="fp4">—</div><div class="fp-unit">px (estimated)</div><div class="fp-bar"><div class="fp-fill" id="fpb4" style="width:0%"></div></div></div>
+      <div class="fp-cell"><div class="fp-param">Macro Pore %</div><div class="fp-val" id="fp5">—</div><div class="fp-unit">% large cells (>2000px²)</div><div class="fp-bar"><div class="fp-fill" id="fpb5" style="width:0%"></div></div></div>
+    </div>
+  </div>
+
   <!-- Canvas grid -->
   <div class="cgrid">
     <div class="cw">
@@ -248,22 +264,6 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <div class="clabel">Histogram peaks<span class="ref">Bosakova 2015</span></div>
       <div id="ph4" class="ph">—</div>
       <canvas id="c4" style="display:none"></canvas>
-    </div>
-  </div>
-
-  <!-- Digital Texture Fingerprint -->
-  <div class="fp-wrap">
-    <div class="fp-head">
-      <span class="fp-title">Digital Texture Fingerprint</span>
-      <span class="fp-ref">after Ruderman et al. (2025) Bread Texture Analyser · ScienceDirect</span>
-    </div>
-    <div class="fp-grid" id="fpGrid">
-      <div class="fp-cell"><div class="fp-param">Void Fraction</div><div class="fp-val" id="fp0">—</div><div class="fp-unit">% crumb area as pores</div><div class="fp-bar"><div class="fp-fill" id="fpb0" style="width:0%"></div></div></div>
-      <div class="fp-cell"><div class="fp-param">Cell Density</div><div class="fp-val" id="fp1">—</div><div class="fp-unit">cells/100px² (fineness)</div><div class="fp-bar"><div class="fp-fill" id="fpb1" style="width:0%"></div></div></div>
-      <div class="fp-cell"><div class="fp-param">Mean Cell Area</div><div class="fp-val" id="fp2">—</div><div class="fp-unit">px² (coarseness)</div><div class="fp-bar"><div class="fp-fill" id="fpb2" style="width:0%"></div></div></div>
-      <div class="fp-cell"><div class="fp-param">Cell Uniformity</div><div class="fp-val" id="fp3">—</div><div class="fp-unit">1 − CV  (1=uniform)</div><div class="fp-bar"><div class="fp-fill" id="fpb3" style="width:0%"></div></div></div>
-      <div class="fp-cell"><div class="fp-param">Wall Thickness</div><div class="fp-val" id="fp4">—</div><div class="fp-unit">px (estimated)</div><div class="fp-bar"><div class="fp-fill" id="fpb4" style="width:0%"></div></div></div>
-      <div class="fp-cell"><div class="fp-param">Macro Pore %</div><div class="fp-val" id="fp5">—</div><div class="fp-unit">% large cells (>2000px²)</div><div class="fp-bar"><div class="fp-fill" id="fpb5" style="width:0%"></div></div></div>
     </div>
   </div>
 
