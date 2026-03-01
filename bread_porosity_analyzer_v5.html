@@ -444,7 +444,9 @@ const STATE = {
   zoom: 1,             // current zoom level (1–5)
   panX: 0, panY: 0,   // pan offset in CSS-pixel coords
   pendingPt: null,     // {x,y} — unconfirmed calibration point
-  pinch: null          // pinch gesture tracking
+  pinch: null,         // pinch gesture tracking
+  origImg: null,       // original Image element (full resolution)
+  origScale: 1         // ratio: display pixels / original pixels
 };
 
 function resetState() {
@@ -453,6 +455,7 @@ function resetState() {
   STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
   STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
   STATE.pendingPt = null; STATE.pinch = null;
+  STATE.origImg = null; STATE.origScale = 1;
   document.getElementById('calBadge').classList.remove('visible');
   drawOverlay();
 }
@@ -691,15 +694,64 @@ function confirmCalibration(skip) {
   if (skip) STATE.roi = null;
   document.getElementById('calModal').style.display = 'none';
   STATE.phase = 'done';
+
+  // Capture ROI dimensions in mm before re-render (which clears STATE.roi)
+  let roiTxt = '';
+  if (STATE.roi && STATE.pxPerMm) {
+    roiTxt = ` | ROI: ${(STATE.roi.w / STATE.pxPerMm).toFixed(1)}x${(STATE.roi.h / STATE.pxPerMm).toFixed(1)}mm`;
+  }
+
+  // Re-render ROI from original full-res image at max 650px
+  // This gives the bread crumb area full resolution regardless of coin/ruler in the photo
+  if (STATE.roi && STATE.origImg) {
+    reRenderROI();
+  }
+
   // Show calibration badge in sidebar
   const badge = document.getElementById('calBadge');
   badge.classList.add('visible');
-  const roiTxt = STATE.roi
-    ? ` | ROI: ${(STATE.roi.w / STATE.pxPerMm).toFixed(1)}x${(STATE.roi.h / STATE.pxPerMm).toFixed(1)}mm`
-    : '';
   badge.innerHTML = `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong> (${STATE.mode})${roiTxt}`;
   document.getElementById('runBtn').disabled = false;
   drawOverlay();
+}
+
+function reRenderROI() {
+  const r = STATE.roi;
+  const img = STATE.origImg;
+  const s = STATE.origScale; // display-px / original-px
+
+  // ROI in original image coordinates
+  const ox = Math.round(r.x / s), oy = Math.round(r.y / s);
+  const ow = Math.round(r.w / s), oh = Math.round(r.h / s);
+
+  // Scale the ROI crop to fill up to MAX px
+  const MAX = 650;
+  const roiScale = Math.min(1, Math.min(MAX / ow, MAX / oh));
+  const nw = Math.round(ow * roiScale), nh = Math.round(oh * roiScale);
+
+  // Rescale factor: how much bigger is the new rendering vs the old ROI
+  const rescale = nw / r.w;
+
+  // Update pxPerMm to match the new pixel scale
+  STATE.pxPerMm *= rescale;
+
+  // Re-draw working canvas with just the ROI at higher resolution
+  const wk = document.getElementById('wk');
+  wk.width = nw; wk.height = nh;
+  wk.getContext('2d').drawImage(img, ox, oy, ow, oh, 0, 0, nw, nh);
+
+  // Update display canvas
+  const c0 = document.getElementById('c0');
+  c0.width = nw; c0.height = nh;
+  c0.getContext('2d').drawImage(wk, 0, 0);
+
+  // Clear the ROI since the working canvas IS the ROI now
+  STATE.roi = null;
+  STATE.imgW = nw; STATE.imgH = nh;
+
+  // Update upload zone info
+  const dz = document.getElementById('dz');
+  dz.querySelector('p').innerHTML += `<br><span style="color:var(--blue)">ROI re-rendered: ${nw}×${nh} px</span>`;
 }
 
 function calHitTestROI(px, py, displayScale) {
@@ -1608,10 +1660,13 @@ function loadImg(file){
     const img=new Image();
     img.onload=()=>{
       const MAX=650; let iw=img.width,ih=img.height;
-      if(iw>MAX||ih>MAX){const ratio=Math.min(MAX/iw,MAX/ih);iw=Math.round(iw*ratio);ih=Math.round(ih*ratio);}
+      const scale = (iw>MAX||ih>MAX) ? Math.min(MAX/iw,MAX/ih) : 1;
+      iw=Math.round(iw*scale); ih=Math.round(ih*scale);
       // Reset state for new image
       resetState();
       STATE.imgW = iw; STATE.imgH = ih;
+      STATE.origImg = img;
+      STATE.origScale = scale;
       const wk=document.getElementById('wk');
       wk.width=iw; wk.height=ih;
       if(!wk.dataset.type) wk.dataset.type='white';
