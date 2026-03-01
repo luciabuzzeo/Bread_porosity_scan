@@ -64,7 +64,8 @@ hr.div{border:none;border-top:1px solid var(--border)}
 .btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
 
 /* MAIN */
-.main{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.5rem;overflow-y:auto}
+.main{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.5rem;overflow-y:auto;min-height:0}
+.main>*{flex-shrink:0}
 
 /* Metrics */
 .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
