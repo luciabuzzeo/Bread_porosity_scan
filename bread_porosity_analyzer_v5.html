@@ -872,6 +872,7 @@ function loadImg(file){
       ['ph1','ph2','ph3','ph4'].forEach(id=>{document.getElementById(id).style.display='';});
       ['c1','c2','c3','c4'].forEach(id=>{document.getElementById(id).style.display='none';});
       document.getElementById('runBtn').disabled=false;
+      document.getElementById('dz').querySelector('p').innerHTML=`<strong style="color:var(--green)">✓ ${file.name}</strong><br>${iw}×${ih} px — ready to analyze`;
       document.getElementById('logEl').textContent='Image loaded — select bread type, then press Analyze.';
     };
     img.src=ev.target.result;
