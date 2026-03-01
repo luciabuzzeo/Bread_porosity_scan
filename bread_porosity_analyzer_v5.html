@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BreadScan v4 — Porosity Analyzer</title>
+<title>BreadScan v5 — Porosity Analyzer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
 <style>
@@ -121,7 +121,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 
 <header>
   <span class="logo">BreadScan</span>
-  <span class="logo-sub">v4 · Literature-Grounded · Multi-Parameter Fingerprint</span>
+  <span class="logo-sub">v5 · Literature-Grounded · Multi-Parameter Fingerprint</span>
   <div class="logo-ref">
     <span>Thresholding:</span> Gonzales-Barron & Butler (2006) J.Food Eng.<br>
     <span>Brown bread:</span> Bosakova-Ardenska (2015) HisAnalysis peak-mode<br>
@@ -148,8 +148,8 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <button class="tbtn" onclick="setType('bsg',this)"><span class="ic">🟫</span>BSG/Dark</button>
     </div>
     <div class="algo-badge" id="algoBadge" style="margin-top:.5rem">
-      <strong>Algorithm: Otsu (Gonzales-Barron 2006)</strong>
-      Minimizes intra-class variance. Best for white bread with bimodal histogram (dark pores vs. pale crumb).
+      <strong>Algorithm: Sauvola local adaptive</strong>
+      Computes a separate threshold for each pixel based on local mean and standard deviation. Handles uneven lighting from photographic images. Applied on CLAHE-enhanced grayscale.
     </div>
   </div>
 
@@ -177,7 +177,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <input type="range" id="of" min="-20" max="30" value="5" step="1"/>
     </div>
     <div class="ibox warn" style="margin-top:.5rem">
-      <strong>HisAnalysis logic:</strong> threshold = histogram peak value + offset. Positive offset = detect only the darkest pores (less false positives from BSG fiber). Negative = more inclusive. Tune until binary view matches visible pores.
+      <strong>HisAnalysis logic:</strong> threshold = histogram peak + offset, computed on RAW grayscale (no CLAHE). Negative offset (default −8%) = detect only pixels significantly darker than the dominant crumb color. More negative = more pores. Tune until binary view matches visible pores.
     </div>
   </div>
 
@@ -234,7 +234,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
       <canvas id="c1" style="display:none"></canvas>
     </div>
     <div class="cw">
-      <div class="clabel">Binary mask<span class="ref">Otsu / HisAnalysis</span></div>
+      <div class="clabel">Binary mask<span class="ref">Sauvola / HisAnalysis</span></div>
       <div id="ph2" class="ph">—</div>
       <canvas id="c2" style="display:none"></canvas>
     </div>
@@ -365,7 +365,7 @@ function clahe(gray, w, h, tileSize, clip) {
 //  3. THRESHOLDING — LITERATURE-GROUNDED
 // ══════════════════════════════════════════════════════
 
-// Otsu — best for white bread (Gonzales-Barron & Butler 2006)
+// Otsu — used for histogram visualization reference
 function otsu(arr) {
   const hist = new Float32Array(256);
   for (let i=0;i<arr.length;i++) hist[Math.round(arr[i]*255)]++;
@@ -381,6 +381,41 @@ function otsu(arr) {
     if(v>best){best=v;thresh=i;}
   }
   return thresh/255; // normalized
+}
+
+// Sauvola local adaptive thresholding — handles uneven lighting
+// T(x,y) = μ(x,y) × [1 + k × (σ(x,y)/R - 1)]
+// Uses integral images for O(1) per-pixel mean/variance computation
+function sauvolaBinarize(arr, w, h, winSize, k) {
+  winSize = winSize || 51;
+  k = k || 0.2;
+  const R = 0.5; // dynamic range for [0,1] normalized data
+  const half = Math.floor(winSize / 2);
+  const out = new Uint8Array(w * h);
+
+  // Build integral images for sum and sum-of-squares
+  const iw = w + 1, ih = h + 1;
+  const intS = new Float64Array(iw * ih);
+  const intQ = new Float64Array(iw * ih);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = arr[y * w + x];
+    const i1 = (y+1)*iw + (x+1);
+    intS[i1] = v   + intS[y*iw+(x+1)] + intS[(y+1)*iw+x] - intS[y*iw+x];
+    intQ[i1] = v*v + intQ[y*iw+(x+1)] + intQ[(y+1)*iw+x] - intQ[y*iw+x];
+  }
+
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - half), y0 = Math.max(0, y - half);
+    const x1 = Math.min(w-1, x + half), y1 = Math.min(h-1, y + half);
+    const n = (x1-x0+1) * (y1-y0+1);
+    const s = intS[(y1+1)*iw+(x1+1)] - intS[y0*iw+(x1+1)] - intS[(y1+1)*iw+x0] + intS[y0*iw+x0];
+    const q = intQ[(y1+1)*iw+(x1+1)] - intQ[y0*iw+(x1+1)] - intQ[(y1+1)*iw+x0] + intQ[y0*iw+x0];
+    const mean = s / n;
+    const std = Math.sqrt(Math.max(0, q/n - mean*mean));
+    const thresh = mean * (1 + k * (std / R - 1));
+    out[y*w+x] = arr[y*w+x] < thresh ? 1 : 0;
+  }
+  return out;
 }
 
 // HisAnalysis — peak-mode threshold for BROWN bread
@@ -433,11 +468,12 @@ function buildHistCanvas(canvasId, arr, threshNorm, peakBin) {
 //  4. MORPHOLOGICAL OPS
 // ══════════════════════════════════════════════════════
 
-function dilate(bin,w,h){
+function dilate(bin,w,h,r){
+  r = r || 1;
   const o=new Uint8Array(w*h);
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     let f=0;
-    for(let dy=-1;dy<=1&&!f;dy++) for(let dx=-1;dx<=1&&!f;dx++){
+    for(let dy=-r;dy<=r&&!f;dy++) for(let dx=-r;dx<=r&&!f;dx++){
       const nx=x+dx,ny=y+dy;
       if(nx>=0&&nx<w&&ny>=0&&ny<h&&bin[ny*w+nx])f=1;
     }
@@ -445,11 +481,12 @@ function dilate(bin,w,h){
   }
   return o;
 }
-function erode(bin,w,h){
+function erode(bin,w,h,r){
+  r = r || 1;
   const o=new Uint8Array(w*h);
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     let a=1;
-    for(let dy=-1;dy<=1&&a;dy++) for(let dx=-1;dx<=1&&a;dx++){
+    for(let dy=-r;dy<=r&&a;dy++) for(let dx=-r;dx<=r&&a;dx++){
       const nx=x+dx,ny=y+dy;
       if(nx<0||nx>=w||ny<0||ny>=h||!bin[ny*w+nx])a=0;
     }
@@ -457,7 +494,7 @@ function erode(bin,w,h){
   }
   return o;
 }
-const morphClose = (b,w,h) => erode(dilate(b,w,h),w,h);
+function morphClose(b,w,h,r){ r=r||1; return erode(dilate(b,w,h,r),w,h,r); }
 
 // ══════════════════════════════════════════════════════
 //  5. CONNECTED COMPONENTS + METRICS
@@ -473,8 +510,10 @@ function labelBlobs(bin, w, h) {
     while(q.length){
       const c=q.pop(); const cx=c%w, cy=Math.floor(c/w);
       pix.push([cx,cy]);
-      for (const nb of [c-1,c+1,c-w,c+w]){
-        if(nb<0||nb>=w*h||Math.abs((nb%w)-cx)>1||vis[nb]||!bin[nb]) continue;
+      // 8-connectivity: cardinal + diagonal neighbors
+      for (const nb of [c-1,c+1,c-w,c+w,c-w-1,c-w+1,c+w-1,c+w+1]){
+        const nx=nb%w, ny=Math.floor(nb/w);
+        if(nb<0||nb>=w*h||Math.abs(nx-cx)>1||Math.abs(ny-cy)>1||vis[nb]||!bin[nb]) continue;
         vis[nb]=1; q.push(nb);
       }
     }
@@ -645,29 +684,44 @@ function analyze() {
   // Step 3: Threshold — algorithm chosen by bread type
   let binary, tNorm, peakBin, algoName;
   if (type === 'white') {
-    tNorm = otsu(enhanced);
+    // Sauvola local adaptive thresholding on CLAHE-enhanced image.
+    // Handles uneven lighting by computing a separate threshold for each pixel
+    // based on local mean and standard deviation in a 51px window.
+    // Otsu fails on photographic images with lighting gradients because a single
+    // global threshold cannot serve both bright and dark regions simultaneously.
+    binary = sauvolaBinarize(enhanced, W, H, 51, 0.2);
+    tNorm = otsu(enhanced); // compute Otsu for histogram visualization reference only
     peakBin = undefined;
-    algoName = 'Otsu (Gonzales-Barron & Butler 2006)';
-    binary = new Uint8Array(W*H);
-    for(let i=0;i<enhanced.length;i++) binary[i] = enhanced[i] < tNorm ? 1 : 0;
-    log.push(`[LIT] Otsu threshold: ${(tNorm*255).toFixed(1)}/255  (${(tNorm*100).toFixed(1)}%)`);
+    algoName = 'Sauvola local adaptive (w=51, k=0.2) on CLAHE-enhanced';
+    log.push(`[LIT] Sauvola local adaptive threshold (window=51px, k=0.2)`);
+    log.push(`      ↳ T(x,y) = μ(x,y) × [1 + k × (σ(x,y)/R − 1)]`);
+    log.push(`      ↳ Handles uneven lighting — each pixel gets its own threshold`);
+    log.push(`      Otsu reference threshold: ${(tNorm*255).toFixed(1)}/255 (for histogram view only)`);
   } else {
-    const res = hisAnalysisPeakMode(enhanced, ofPct);
+    // BSG/dark bread: compute HisAnalysis on RAW blurred grayscale, NOT on CLAHE output.
+    // Bosakova-Ardenska (2015) operates on unenhanced grayscale where the histogram
+    // peak represents the dominant crumb color. CLAHE flattens the histogram,
+    // destroying the peak and producing a meaningless threshold.
+    const res = hisAnalysisPeakMode(gray, ofPct);
     tNorm = res.tNorm; peakBin = res.peakBin; algoName = 'HisAnalysis peak-mode (Bosakova-Ardenska 2015)';
     binary = new Uint8Array(W*H);
-    for(let i=0;i<enhanced.length;i++) binary[i] = enhanced[i] < tNorm ? 1 : 0;
-    log.push(`[LIT] HisAnalysis — histogram peak at bin ${peakBin} (${(peakBin/255*100).toFixed(1)}%)`);
-    log.push(`[LIT] Threshold = peak + ${ofPct}% offset = bin ${res.thresh} (${(tNorm*100).toFixed(1)}%)`);
-    log.push(`      ↳ Pixels DARKER than this are classified as pores`);
+    for(let i=0;i<gray.length;i++) binary[i] = gray[i] < tNorm ? 1 : 0;
+    log.push(`[LIT] HisAnalysis on RAW grayscale (no CLAHE) — faithful to Bosakova 2015`);
+    log.push(`[LIT] Histogram peak at bin ${peakBin} (${(peakBin/255*100).toFixed(1)}%) — dominant crumb color`);
+    log.push(`[LIT] Threshold = peak + (${ofPct}%) offset = bin ${res.thresh} (${(tNorm*100).toFixed(1)}%)`);
+    log.push(`      ↳ Pixels DARKER than this threshold are classified as pores`);
   }
 
   const rawPx = binary.reduce((s,v)=>s+v,0);
   log.push(`Raw dark pixels: ${rawPx} (${(rawPx/W/H*100).toFixed(1)}%)`);
 
   // Step 4: Morphological close
-  const closed = morphClose(binary, W, H);
+  // BSG: radius 3 to bridge fragmented pore regions caused by fiber texture
+  // White: radius 1 (pores are well-defined, larger closing would merge them)
+  const morphR = type === 'white' ? 1 : 3;
+  const closed = morphClose(binary, W, H, morphR);
   const closedPx = closed.reduce((s,v)=>s+v,0);
-  log.push(`After morph-close: ${closedPx} px (${(closedPx/W/H*100).toFixed(1)}%)`);
+  log.push(`After morph-close (r=${morphR}): ${closedPx} px (${(closedPx/W/H*100).toFixed(1)}%)`);
 
   // Step 5: Label blobs + size filter only (NO circularity filter — per Gonzales-Barron 2006)
   const allBlobs = labelBlobs(closed, W, H);
@@ -707,8 +761,12 @@ function analyze() {
     else if (vf2d > 0.40) log.push(`\n⚠ High — may include non-pore regions. Review binary view.`);
     else log.push(`\nℹ Low-end — check binary view; may be photography artifacts.`);
   } else {
-    log.push(`\nℹ BSG bread: expected lower void fraction than control due to fiber disrupting gas cell structure.`);
-    log.push(`  Compare relative values across formulations, not absolute values.`);
+    if (vf2d < 0.05) log.push(`\n⚠ Very low for BSG bread (<5%). Try: more negative offset, lower min cell area, or check image quality.`);
+    else if (vf2d >= 0.08 && vf2d <= 0.45) log.push(`\n✓ Void fraction within expected range for BSG/dark bread (lit: 10–40% for photos, 35–47% for flatbed scans).`);
+    else if (vf2d > 0.45) log.push(`\n⚠ High for BSG bread — may include fiber noise. Try less negative offset or increase min cell area.`);
+    else log.push(`\nℹ Low-end for BSG — adjust peak offset (more negative = more pores detected).`);
+    log.push(`  BSG bread has lower porosity than control due to fiber disrupting gluten gas cell structure.`);
+    log.push(`  Compare relative values across formulations under identical imaging conditions.`);
   }
   log.push(`\nAlgorithm: ${algoName}`);
   log.push(`Time: ${(performance.now()-t0).toFixed(1)}ms`);
@@ -723,14 +781,16 @@ function analyze() {
     show('c3','ph3');
   }
 
-  buildHistCanvas('c4', enhanced, tNorm, peakBin); show('c4','ph4');
+  // For BSG: show histogram of raw grayscale (where threshold was computed)
+  // For white: show histogram of CLAHE-enhanced (where Otsu was computed)
+  buildHistCanvas('c4', type === 'white' ? enhanced : gray, tNorm, peakBin); show('c4','ph4');
   renderHist(valid, totalPx);
   renderFingerprint(valid, totalPx, W, H);
 
   // Metrics bar
   const fmt=v=>(v*100).toFixed(1)+'%';
   const setM=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='mv'+(cls?' '+cls:'');e.closest('.mc').classList.remove('empty');};
-  const vfClass = type==='white' && vf2d>=0.10&&vf2d<=0.40?'ok': vf2d<0.05?'lo':'';
+  const vfClass = (type==='white' && vf2d>=0.10&&vf2d<=0.40)?'ok':(type==='bsg' && vf2d>=0.08&&vf2d<=0.45)?'ok': vf2d<0.05?'lo':'';
   setM('m0',fmt(vf2d),vfClass);
   setM('m1',fmt(vf3d),'');
   setM('m2',String(valid.length),'ok');
@@ -754,8 +814,14 @@ function analyze() {
 // ══════════════════════════════════════════════════════
 
 const ALGO_TEXT = {
-  white: '<strong>Algorithm: Otsu (Gonzales-Barron & Butler 2006)</strong>\nMinimizes intra-class variance. Best for white bread with bimodal histogram — dark pores vs. pale crumb.',
-  bsg:   '<strong>Algorithm: HisAnalysis peak-mode (Bosakova-Ardenska 2015)</strong>\nThreshold = histogram peak + offset. Peak = dominant crumb color. Pores = pixels darker than this. Validated for brown bread (corr. r=0.93 vs. physicochemical porosity).'
+  white: '<strong>Algorithm: Sauvola local adaptive</strong>\nComputes a separate threshold for each pixel based on local mean and standard deviation. Handles uneven lighting from photographic images. Applied on CLAHE-enhanced grayscale.',
+  bsg:   '<strong>Algorithm: HisAnalysis peak-mode (Bosakova-Ardenska 2015)</strong>\nThreshold computed on RAW blurred grayscale (no CLAHE) — faithful to original method. Peak = dominant crumb color. Negative offset = only darkest pixels (true pores). Validated r=0.93 vs. physicochemical porosity.'
+};
+
+// Default parameter sets for each bread type
+const DEFAULTS = {
+  white: { sg: '1.0', of: '5', minA: '20' },
+  bsg:   { sg: '2.0', of: '-8', minA: '10' }
 };
 
 function setType(t, btn){
@@ -763,6 +829,11 @@ function setType(t, btn){
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('algoBadge').innerHTML = ALGO_TEXT[t];
+  // Auto-switch defaults for bread type
+  const d = DEFAULTS[t];
+  document.getElementById('sg').value = d.sg;
+  document.getElementById('of').value = d.of;
+  document.getElementById('minA').value = d.minA;
   syncSliders();
 }
 

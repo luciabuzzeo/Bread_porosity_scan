@@ -4,6 +4,31 @@ All notable changes to BreadScan are documented here.
 
 ---
 
+## [5.0] — 2025
+
+### Added
+- **Sauvola local adaptive thresholding** for white/control bread. Replaces global Otsu. Computes a per-pixel threshold based on local mean and standard deviation (window=51px, k=0.2), eliminating the uneven-lighting problem where Otsu's single global threshold caused half the image to be misclassified.
+- **8-connectivity** in connected components labeling (was 4-connectivity). Diagonal pixel connections are now recognized, preventing valid pores from being split into sub-threshold fragments.
+- **Bread-type-specific default parameters** that auto-switch when selecting white vs. BSG mode.
+- BSG-specific expected-range validation in analysis log (10–40% for photos, 35–47% for flatbed scans, per PMC9957138).
+- Diagnostic warnings when BSG porosity falls below 5%.
+
+### Changed
+- **BSG thresholding now computed on RAW blurred grayscale, not CLAHE output** — faithful to Bosakova-Ardenska (2015). CLAHE flattens the histogram, destroying the peak that HisAnalysis uses to identify the dominant crumb color. This was the root cause of ~1.88% porosity (should be 15–40%).
+- **BSG default Gaussian σ** increased from 1.0 to **2.0** — smooths BSG fiber texture before thresholding, reducing salt-and-pepper noise in the binary mask.
+- **BSG default peak offset** changed from +5% to **−8%** — threshold is now set below the histogram peak, detecting only pixels significantly darker than the dominant crumb color as pores.
+- **BSG default min cell area** reduced from 20 to **10 px²** — BSG bread has smaller, more fragmented pores.
+- **BSG morphological closing radius** increased from 1 to **3** (7×7 kernel) — bridges fragmented pore regions caused by fiber texture. White bread keeps radius 1.
+- CLAHE output is now used for **visualization only** in BSG mode (still used for Sauvola input in white mode).
+- Histogram panel shows the image that was actually used for thresholding (CLAHE for white, raw grayscale for BSG).
+
+### Fixed
+- **BSG bread porosity ~1.88% instead of expected 15–40%** — caused by CLAHE destroying histogram peak before HisAnalysis threshold computation.
+- **Colormap showing pores in only half the image for white bread** — caused by Otsu's single global threshold misclassifying the darker half of unevenly-lit photographs. Sauvola local adaptive thresholding resolves this.
+- **Diagonally-connected pore pixels split into separate blobs** — 4-connectivity flood fill was fragmenting valid pores, inflating cell count and losing small pores below the min-area filter.
+
+---
+
 ## [4.0] — 2025
 
 ### Added

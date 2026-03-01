@@ -1,7 +1,7 @@
 # 🍞 BreadScan — Bread Crumb Porosity Analyzer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0-gold)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.0-gold)](CHANGELOG.md)
 [![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)]()
 [![Browser-based](https://img.shields.io/badge/runs%20in-browser-blue)]()
 
@@ -32,12 +32,12 @@ BreadScan is a **single-file, zero-dependency** web application for measuring br
 
 The tool was developed to address a specific gap in existing DIA workflows: **most published tools assume white bread with a bimodal grayscale histogram** (dark pores against a pale crumb). This assumption breaks down for **brewer's spent grain (BSG)-enriched, whole-wheat, or other dark/fiber-enriched breads**, where the warm-brown crumb color produces false positives when global Otsu thresholding is applied.
 
-BreadScan v4 implements **two distinct thresholding algorithms**, selected automatically based on bread type:
+BreadScan v5 implements **two distinct thresholding algorithms**, selected automatically based on bread type:
 
 | Bread type | Algorithm | Literature source |
 |---|---|---|
-| White / control wheat bread | **Otsu** (global, minimizes intra-class variance) | Gonzales-Barron & Butler (2006) |
-| BSG / dark / fiber-enriched bread | **HisAnalysis peak-mode** (threshold = histogram peak + offset) | Bosakova-Ardenska (2015) |
+| White / control wheat bread | **Sauvola local adaptive** (per-pixel threshold from local mean and std) | Sauvola & Pietikäinen (2000); applied on CLAHE-enhanced image |
+| BSG / dark / fiber-enriched bread | **HisAnalysis peak-mode** (threshold = histogram peak + offset, on raw grayscale) | Bosakova-Ardenska (2015) |
 
 ---
 
@@ -72,14 +72,14 @@ BreadScan also outputs a **Digital Texture Fingerprint** — a multi-parameter s
 
 **Option 1 — Use directly from GitHub Pages:**
 ```
-https://<your-username>.github.io/breadscan/bread_porosity_analyzer_v4.html
+https://<your-username>.github.io/breadscan/bread_porosity_analyzer_v5.html
 ```
 
 **Option 2 — Clone and open locally:**
 ```bash
 git clone https://github.com/<your-username>/breadscan.git
 cd breadscan
-open bread_porosity_analyzer_v4.html   # macOS
+open bread_porosity_analyzer_v5.html   # macOS
 # or double-click the file in your file explorer
 ```
 
@@ -96,18 +96,21 @@ No build step. No `npm install`. No server. Just open the HTML file.
 - **Crop to crumb only** — remove crust edges before uploading, as crust pixels skew the histogram and bias the threshold
 
 ### 2. Select bread type
-- **Control / White** → Otsu algorithm
-- **BSG / Dark** → HisAnalysis peak-mode algorithm
+- **Control / White** → Sauvola local adaptive threshold (handles uneven lighting)
+- **BSG / Dark** → HisAnalysis peak-mode threshold on raw grayscale
+
+Parameters auto-switch when you change bread type (Gaussian σ, peak offset, min cell area).
 
 ### 3. Adjust preprocessing (optional)
 - `Gaussian σ`: smoothing before thresholding. Higher = smoother binary mask, fewer noise pixels
 - `CLAHE clip`: local contrast enhancement. Increase for dark/flat-histogram images
 
 ### 4. For BSG bread: adjust Peak Offset
-- The histogram view (5th panel) shows where the threshold is placed on the intensity distribution
+- The histogram view (5th panel) shows where the threshold is placed on the **raw grayscale** intensity distribution
 - The vertical **amber line** = histogram peak (dominant crumb color)
 - The vertical **gold line** = actual threshold = peak + offset
-- A positive offset (e.g. +5 to +15%) means: only detect pixels significantly darker than the crumb peak
+- A **negative offset** (default −8%) means: only detect pixels significantly darker than the crumb peak
+- More negative = more pores detected; less negative = stricter
 - Adjust until the binary view (3rd panel) shows pores highlighted without BSG fiber noise
 
 ### 5. Adjust size filter
@@ -121,14 +124,14 @@ Results appear in the metrics bar, fingerprint panel, colormap view, and analysi
 
 ## Parameters Reference
 
-| Parameter | Default | Range | Notes |
-|---|---|---|---|
-| Gaussian σ | 1.0 | 0–3.0 | Pre-thresholding denoising |
-| CLAHE clip | 2.0 | 0.5–5.0 | Local contrast enhancement before thresholding |
-| Peak offset (BSG only) | +5% | −20% to +30% | Threshold offset from histogram peak; positive = stricter (darker pores only) |
-| Min cell area | 20 px² | 5–300 | Minimum blob size to count as a pore |
-| Max cell area | 15000 px² | 500–40000 | Maximum blob size; set lower to exclude large artifacts |
-| 3D correction factor | 1.50 | 1.0–3.0 | Multiplier to estimate 3D volumetric porosity from 2D optical measurement |
+| Parameter | White default | BSG default | Range | Notes |
+|---|---|---|---|---|
+| Gaussian σ | 1.0 | 2.0 | 0–3.0 | Pre-thresholding denoising; higher for BSG to smooth fiber texture |
+| CLAHE clip | 2.0 | 2.0 | 0.5–5.0 | Local contrast enhancement (used for Sauvola input in white mode; visualization only in BSG mode) |
+| Peak offset (BSG only) | +5% | −8% | −20% to +30% | Threshold offset from histogram peak; negative = only darkest pixels (true pores) |
+| Min cell area | 20 px² | 10 px² | 5–300 | Minimum blob size to count as a pore; lower for BSG's smaller pores |
+| Max cell area | 15000 px² | 15000 px² | 500–40000 | Maximum blob size; set lower to exclude large artifacts |
+| 3D correction factor | 1.50 | 1.50 | 1.0–3.0 | Multiplier to estimate 3D volumetric porosity from 2D optical measurement |
 
 > **On the 3D correction factor:** 2D DIA systematically underestimates true 3D porosity. X-ray microtomography studies report volumetric porosities of 60–80% for white wheat bread. A factor of 1.5 is a conservative estimate; adjust based on published values for your specific bread type.
 
@@ -165,10 +168,10 @@ Six structural descriptors presented as a normalized profile:
 | View | Description |
 |---|---|
 | **Original** | Uploaded image (resized to max 650px) |
-| **CLAHE Enhanced** | Contrast-enhanced grayscale used for thresholding |
-| **Binary Mask** | Thresholded image — gold pixels = detected pores |
+| **CLAHE Enhanced** | Contrast-enhanced grayscale (used for Sauvola input in white mode; visualization in BSG mode) |
+| **Binary Mask** | Thresholded image — gold pixels = detected pores (Sauvola for white, HisAnalysis for BSG) |
 | **Colormap by area** | Pore size map: blue (micro) → green → yellow → red (macro) |
-| **Histogram + threshold** | Intensity histogram of enhanced image; gold line = threshold, amber line = histogram peak |
+| **Histogram + threshold** | Intensity histogram of the image used for thresholding (CLAHE for white, raw grayscale for BSG); gold line = threshold, amber line = histogram peak |
 
 ---
 
@@ -181,16 +184,18 @@ Input image
     ↓
 Grayscale (0.299R + 0.587G + 0.114B)
     ↓
-Gaussian blur (σ configurable)
+Gaussian blur (σ configurable: 1.0 white, 2.0 BSG)
     ↓
-CLAHE (Contrast Limited Adaptive Histogram Equalization, tile=32px)
+    ├── White bread:
+    │     CLAHE (tile=32px) → Sauvola local adaptive threshold (w=51, k=0.2)
+    │
+    └── BSG/dark bread:
+          HisAnalysis peak-mode threshold on blurred grayscale (no CLAHE)
+          CLAHE computed for visualization only
     ↓
-    ├── White bread → Otsu global threshold
-    └── BSG/dark bread → HisAnalysis peak-mode threshold
+Morphological closing (r=1 white, r=3 BSG)   [fills micro-gaps in pore edges]
     ↓
-Morphological closing (dilate r=1 → erode r=1)   [fills micro-gaps in pore edges]
-    ↓
-Connected components labeling (BFS flood-fill)
+Connected components labeling (8-connectivity BFS flood-fill)
     ↓
 Size filter (min/max area)
     ↓
@@ -199,14 +204,14 @@ Metrics + Fingerprint + Visualization
 
 ### Thresholding Algorithms
 
-**Otsu (white bread):**  
-Finds the gray level that maximizes inter-class variance between "pore" and "crumb" pixel classes. Performs best when the intensity histogram is bimodal — which is the case for white bread (dark pores, pale crumb matrix). Validated as the top-performing global method for bread DIA by [Gonzales-Barron & Butler (2006)](#literature-references).
+**Sauvola local adaptive (white bread):**
+Computes a per-pixel threshold: `T(x,y) = μ(x,y) × [1 + k × (σ(x,y)/R − 1)]`, where μ and σ are the local mean and standard deviation in a 51px window. This handles uneven lighting in photographic images — each region of the image gets a threshold appropriate to its local brightness. Applied on the CLAHE-enhanced image for maximum pore-crumb contrast. Replaces global Otsu, which failed on images with lighting gradients (one half of the image misclassified entirely).
 
-**HisAnalysis peak-mode (BSG / dark bread):**  
-Identifies the intensity bin with the highest frequency in the enhanced grayscale histogram (the dominant crumb color). Sets the threshold at `peak_bin + offset`. Pixels darker than this threshold are classified as pores. This approach was validated specifically for brown bread by [Bosakova-Ardenska (2015)](#literature-references), achieving a correlation coefficient of r = 0.93 against physicochemical porosity measurements.
+**HisAnalysis peak-mode (BSG / dark bread):**
+Identifies the intensity bin with the highest frequency in the **raw blurred grayscale** histogram (the dominant crumb color). Sets the threshold at `peak_bin + offset` (default offset = −8%). Pixels darker than this threshold are classified as pores. Computed on raw grayscale — not CLAHE — because CLAHE flattens the histogram and destroys the peak information. This approach was validated specifically for brown bread by [Bosakova-Ardenska (2015)](#literature-references), achieving a correlation coefficient of r = 0.93 against physicochemical porosity measurements.
 
-**Why not adaptive thresholding?**  
-Adaptive thresholding (local mean) was tested in earlier versions but produced inconsistent results when imaging conditions varied (photographic hotspots, uneven lighting). Global methods with a physically-grounded threshold selection criterion — Otsu or peak-mode — yield more reproducible results across sessions, which is critical for comparative studies across bread formulations.
+**Why Sauvola replaced Otsu for white bread:**
+Otsu computes a single global threshold by maximizing inter-class variance. While validated for uniformly-lit flatbed scans ([Gonzales-Barron & Butler, 2006](#literature-references)), it fails on photographic images with brightness gradients — the darker half is entirely misclassified as pore, producing massive false blobs that get removed by the size filter. Sauvola's local approach eliminates this problem.
 
 ### Important note on results
 
@@ -268,7 +273,7 @@ And cite the underlying algorithmic literature as appropriate (see [Literature R
 
 ```
 breadscan/
-├── bread_porosity_analyzer_v4.html   ← Main application (self-contained)
+├── bread_porosity_analyzer_v5.html   ← Main application (self-contained)
 ├── README.md                         ← This file
 ├── CHANGELOG.md                      ← Version history
 ├── LICENSE                           ← MIT License
