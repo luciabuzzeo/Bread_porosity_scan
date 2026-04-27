@@ -4,6 +4,20 @@ All notable changes to BreadScan are documented here.
 
 ---
 
+## [5.1] — 2025
+
+### Added
+- **Spatial calibration with a ruler.** Two-point tap workflow on the uploaded image with explicit *Confirm point* / *Redo* per point, followed by entry of the real distance in millimetres. Computes the px/mm scale factor and reports areas in mm², cell density in cells/cm², and wall thickness in mm.
+- **Spatial calibration with a coin.** Same two-tap workflow across the coin diameter, with built-in references for 1 €, 2 €, 50 ¢, 10 ¢, US Quarter, US Nickel and UK £1.
+- **Region-of-interest (ROI) selection.** After calibration, the operator drags a rectangle over the crumb area, excluding the crust, and confirms it. Crust pixels otherwise bias the histogram and the threshold. *Skip — use full image* and *Redo ROI* are also available.
+- **Calibration badge** in the sidebar showing the active px/mm factor, calibration mode, and ROI dimensions in mm.
+- **Automatic unit switching** in the metrics, fingerprint, log, and visualizations: physical units (mm, mm², cells/cm²) when calibrated; pixel units otherwise.
+
+### Changed
+- Renamed application file from `bread_porosity_analyzer_v5.html` to `bread_porosity_analyzer.html`. The version label is removed from page title, header strap-line, and badges.
+
+---
+
 ## [5.0] — 2025
 
 ### Added
