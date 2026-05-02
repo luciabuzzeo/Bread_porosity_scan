@@ -12,8 +12,8 @@
 ## Contents
 
 - [Overview](#overview)
-- [Output Metrics](#output-metrics)
 - [How to Use](#how-to-use)
+- [Output Metrics](#output-metrics)
 - [Parameters Reference](#parameters-reference)
 - [Methodology](#methodology)
 - [Limitations](#limitations)
@@ -39,6 +39,70 @@ A spatial calibration step (using a ruler or coin in the image) converts pixel m
 
 ---
 
+## How to Use
+
+### 1. Sample preparation and image acquisition
+
+Slice the loaf transversely with a sharp serrated knife and image the crumb face under uniform, diffuse illumination. A flatbed scanner at 200–300 dpi is the gold standard ([Gonzales-Barron & Butler, 2006](#references)); a smartphone photograph in diffuse light without flash is acceptable for relative comparison across formulations imaged under identical conditions.
+
+**Always include a spatial reference in the frame**: a ruler placed alongside the slice is strongly preferred. A coin is acceptable when no ruler is available, but provides only a single reference distance.
+
+### 2. Upload the image and choose calibration mode
+
+Drop the file onto the upload area or click to select it. A small dialog opens with three options:
+
+- **Calibrate with ruler** *(recommended)*
+- **Calibrate with coin** *(alternative)*
+- **Crumb only** *(no spatial calibration; results in pixel units)*
+
+### 3. Spatial calibration with a ruler *(recommended)*
+
+The calibration dialog shows the uploaded image. You tap two points along the ruler and declare the real distance between them.
+
+1. **Tap the first point** at a known mark on the ruler (e.g. the 0 mm line). The point appears as a pulsing marker labelled *Confirm?*.
+2. Press **Confirm point** to lock the point in. If the placement was inaccurate, press **Redo** and tap again.
+3. **Tap the second point** at a second known mark (e.g. the 50 mm line) and press **Confirm point** again.
+4. Enter the **distance in mm** between the two points (the field defaults to 50 mm; adjust to match the marks you selected).
+5. The tool computes and displays the scale factor (px/mm) and proceeds to the ROI step.
+
+> *Place the two points as far apart as the ruler allows. A longer reference line reduces the relative error introduced by tap precision and gives a more accurate scale factor.*
+
+### 4. Spatial calibration with a coin *(alternative)*
+
+Same two-tap workflow as the ruler, but tap two **opposite edges of the coin** (across its diameter), then select the coin from the drop-down. Built-in references: 1 €, 2 €, 50 ¢, 10 ¢, US Quarter, US Nickel, UK £1.
+
+### 5. Define the region of interest (ROI)
+
+BreadScan offers two ROI modes; **Free rectangle** is the default, since loaf cross-sections vary in size.
+
+- **Free rectangle (default).** Draw a rectangle of any size and aspect ratio over a representative crumb area, excluding the crust. When the image is calibrated, the ROI is rendered internally at a constant working resolution (default 10 px/mm, see *Advanced* in the sidebar) so that the Sauvola window and morphological kernel correspond to the same physical size on every run — small differences in ROI size and shape no longer change the algorithmic scale.
+- **Fixed square** (optional, *strict-determinism mode*). A square ROI of *side × side* mm (default 40 mm, configurable from 10 to 80 mm) is drawn centred on the image. The operator only **drags it to position it**; the size cannot be changed. Useful when the experimental design requires sampling exactly the same physical area on every loaf.
+
+Press **Confirm ROI** when positioned; **Redo ROI** re-draws or re-centres; **Skip — use full image** disables ROI cropping. The ROI dimensions in mm are shown on the image overlay.
+
+A **← Back** button on the calibration modal returns to the previous step (from ROI to calibration; from calibration to the upload-mode chooser) without forcing a re-upload of the image.
+
+### 6. Select the bread type
+
+Choose **Control / White** (Sauvola adaptive thresholding) or **BSG / Dark** (HisAnalysis peak-mode). Default preprocessing and segmentation parameters auto-switch with the selection.
+
+### 7. Run the analysis
+
+Press **Analyze — Generate Fingerprint**. The metrics bar, fingerprint panel, image panels, cell-size distribution and analysis log are populated. Each successful analysis is automatically appended to the **Session Results** store (see below).
+
+### 8. Export results
+
+Every analysis run is saved to the browser's local store with the source filename, timestamp, calibration mode, ROI configuration and the full set of metrics. The **Session Results** block in the sidebar shows the running count and offers two actions:
+
+- **Export CSV** — downloads `breadscan_results_YYYYMMDD_HHMM.csv` containing one row per analysis, ready for import into Excel, R or Python.
+- **Clear** — empties the local store after confirmation.
+
+The history persists across browser reloads and is private to the device.
+
+<sub>**Optional — preprocessing fine-tuning.** Defaults are set per crumb type and are appropriate for most images. If the binary mask shows under- or over-segmentation, consult the *Parameters Reference* below: increase Gaussian σ to suppress fibre noise; lower the BSG peak offset to detect more cells; raise the minimum cell area to remove single-pixel artefacts; raise CLAHE clip on flat-histogram images. Visual inspection of the binary mask is recommended in all cases.</sub>
+
+---
+
 ## Output Metrics
 
 After analysis, BreadScan reports the following descriptors of crumb structure. When the image is spatially calibrated, areas are returned in mm² and cell density in cells/cm²; otherwise units are pixel-based.
@@ -52,20 +116,19 @@ After analysis, BreadScan reports the following descriptors of crumb structure. 
 | **Cell count** | Number of valid gas cells after size filtering | Cell count (Gonzales-Barron & Butler, 2006) |
 | **Cell density** | Cells per cm² (calibrated) or cells / 100 px² (uncalibrated) | Crumb fineness (Zghal et al., 1999) |
 | **Mean cell area** | Mean projected area of valid gas cells, in mm² or px² | Mean cell area |
-| **Cell uniformity** | 1 − coefficient of variation of cell areas (1 = perfectly uniform) | Crumb homogeneity |
 
 ### Digital Texture Fingerprint
 
-A six-parameter morphological profile, presented in normalized form for direct comparison across formulations (after Ruderman et al., 2025):
+A normalized morphological profile presented as bar charts for at-a-glance comparison across formulations (after Ruderman et al., 2025). The fingerprint repeats *Void fraction*, *Cell density* and *Mean cell area*, and adds two descriptors that are not in the metrics bar:
 
 | Parameter | Description | Sensory correlate |
 |---|---|---|
 | Void fraction | Fraction of crumb area occupied by gas cells | Lightness, softness |
-| Cell density | Spatial frequency of cells | Crumb fineness, silkiness |
+| Cell density | Spatial frequency of cells | Crumb fineness |
 | Mean cell area | Average gas-cell projected area | Coarseness |
-| Cell uniformity | 1 − CV of cell areas | Homogeneity |
-| Wall thickness | √(solid crumb area / cell count) | Structural integrity |
-| Macro-pore fraction | Fraction of crumb area in cells > 2000 px² | Open-crumb character |
+| Cell uniformity | 1 − CV of cell areas (1 = perfectly uniform) | Crumb homogeneity |
+| **Wall thickness** | √(solid crumb area / cell count); proxy for the inter-cell wall scale | Structural integrity, chewiness |
+| **Macro-pore fraction** | Fraction of crumb area in cells > 2000 px² | Open-crumb character |
 
 ### Visual outputs
 
@@ -80,54 +143,6 @@ A six-parameter morphological profile, presented in normalized form for direct c
 
 ---
 
-## How to Use
-
-### 1. Sample preparation and image acquisition
-
-Slice the loaf transversely with a sharp serrated knife and image the crumb face under uniform, diffuse illumination. A flatbed scanner at 200–300 dpi is the gold standard ([Gonzales-Barron & Butler, 2006](#references)); a smartphone photograph in diffuse light without flash is acceptable for relative comparison across formulations imaged under identical conditions.
-
-**Always include a spatial reference in the frame**: a ruler placed alongside the slice is strongly preferred. A coin is acceptable when no ruler is available, but provides only a single reference distance.
-
-### 2. Upload the image
-
-Drop the file onto the upload area or click to select it. A calibration dialog opens with three options:
-
-- **Calibrate with ruler** *(recommended)*
-- **Calibrate with coin** *(alternative)*
-- **Crumb only** *(no spatial calibration; results in pixel units)*
-
-### 3. Spatial calibration with a ruler
-
-This is the recommended workflow. The dialog displays the uploaded image; you tap two points along the ruler and declare the real distance between them.
-
-1. **Tap the first point** at a known mark on the ruler (e.g. the 0 mm line). The point appears as a pulsing marker labelled *Confirm?*.
-2. Press **Confirm point** to lock the point in. If the placement was inaccurate, press **Redo** and tap again.
-3. **Tap the second point** at a second known mark (e.g. the 50 mm line) and press **Confirm point** again.
-4. Enter the **distance in mm** between the two points (the field defaults to 50 mm; adjust to match the marks you selected).
-5. The tool computes and displays the scale factor (px/mm) and proceeds to the ROI step.
-
-> *Place the two points as far apart as the ruler allows. A longer reference line reduces the relative error introduced by tap precision and gives a more accurate scale factor.*
-
-### 4. Spatial calibration with a coin
-
-Same two-tap workflow as the ruler, but tap two **opposite edges of the coin** (across its diameter), then select the coin from the drop-down. Built-in references: 1 €, 2 €, 50 ¢, 10 ¢, US Quarter, US Nickel, UK £1.
-
-### 5. Define the region of interest (ROI)
-
-After calibration, drag a rectangle over the crumb area, **excluding the crust**, and press **Confirm ROI**. Crust pixels skew the intensity histogram and bias the threshold, so cropping is important. Use **Redo ROI** to redraw, or **Skip — use full image** if no cropping is needed. The ROI dimensions are shown in mm.
-
-### 6. Select the bread type
-
-Choose **Control / White** (Sauvola adaptive thresholding) or **BSG / Dark** (HisAnalysis peak-mode). Default preprocessing and segmentation parameters auto-switch with the selection.
-
-### 7. Run the analysis
-
-Press **Analyze — Generate Fingerprint**. The metrics bar, fingerprint panel, image panels, cell-size distribution and analysis log are populated.
-
-<sub>**Optional — preprocessing fine-tuning.** Defaults are set per crumb type and are appropriate for most images. If the binary mask shows under- or over-segmentation, consult the *Parameters Reference* below: increase Gaussian σ to suppress fibre noise; lower the BSG peak offset to detect more cells; raise the minimum cell area to remove single-pixel artefacts; raise CLAHE clip on flat-histogram images. Visual inspection of the binary mask is recommended in all cases.</sub>
-
----
-
 ## Parameters Reference
 
 | Parameter | White default | BSG default | Range | Function |
@@ -135,9 +150,13 @@ Press **Analyze — Generate Fingerprint**. The metrics bar, fingerprint panel, 
 | Gaussian σ | 1.0 | 2.0 | 0.0 – 3.0 | Pre-thresholding denoising; higher values smooth fibre texture in BSG crumbs |
 | CLAHE clip | 2.0 | 2.0 | 0.5 – 5.0 | Local-contrast enhancement; used as input to Sauvola in white mode, visualization only in BSG mode |
 | Peak offset | n/a | −8 % | −20 % to +30 % | BSG mode only: threshold offset from histogram peak. More negative = stricter (only the darkest pixels are classified as cells) |
-| Min cell area | 20 px² | 10 px² | 5 – 300 | Minimum area for a detected blob to be counted as a gas cell |
-| Max cell area | 15 000 px² | 15 000 px² | 500 – 40 000 | Upper size cut-off; rejects large background artefacts |
+| Min cell area (calibrated) | 0.10 mm² | 0.05 mm² | 0.01 – 2.00 | Minimum area for a detected blob to be counted as a gas cell. Auto-switches to mm² when the image is calibrated |
+| Max cell area (calibrated) | 150 mm² | 150 mm² | 1 – 500 | Upper size cut-off; rejects large background artefacts |
+| Min cell area (uncalibrated) | 20 px² | 10 px² | 5 – 300 | Pixel-based fallback when no ruler/coin is set |
+| Max cell area (uncalibrated) | 15 000 px² | 15 000 px² | 500 – 40 000 | Pixel-based fallback when no ruler/coin is set |
 | 3D correction | 1.50 | 1.50 | 1.0 – 3.0 | Multiplier applied to 2D void fraction to estimate volumetric porosity |
+| ROI side | 40 mm | 40 mm | 10 – 80 mm | Edge length of the fixed-size square ROI |
+| Working resolution | 10 px/mm | 10 px/mm | 5 – 30 px/mm | Constant px/mm at which the ROI is processed; locks the physical size of the Sauvola window |
 
 > **On the 3D correction factor.** 2D image analysis systematically underestimates true volumetric porosity. X-ray microtomography studies report 60–80 % volumetric porosity in white wheat bread; a multiplier of 1.5 is a conservative default. Adjust based on published values for the specific bread system under study.
 

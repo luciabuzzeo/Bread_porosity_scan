@@ -4,6 +4,26 @@ All notable changes to BreadScan are documented here.
 
 ---
 
+## [5.2] — 2026
+
+### Added
+- **Constant working resolution.** Whenever the image is spatially calibrated, the ROI is rendered internally at a fixed *target px/mm* (default 10 px/mm). Sauvola's window and the morphological-closing kernel therefore correspond to the same physical size on every run, regardless of ROI shape or drawn size. This removes the dominant scale-dependent source of variability between repeats.
+- **Cell-size filter in mm².** When the image is calibrated, the *Min/Max cell area* sliders are interpreted as physical sizes in mm² (defaults 0.10/150 mm² for white, 0.05/150 mm² for BSG). When uncalibrated, the legacy px² behaviour is retained. The same physical cell is now accepted or rejected consistently across runs.
+- **Median cell area.** A new metric reported alongside the mean. The cell-area distribution is right-skewed; the median is robust to single outlier macro-cells and is less sensitive to small differences in ROI position. Also included in the CSV export.
+- **Fixed-size square ROI** as an optional strict-determinism mode. A square of configurable side in mm (default 40 mm); operator drags only, no resize. Useful when the experimental design requires sampling exactly the same physical area on every loaf.
+- **Session Results** sidebar block. Each successful analysis is appended to a per-browser store (`localStorage`), with filename, timestamp, calibration, ROI configuration and the full metrics set. *Export CSV* downloads a tidy table; *Clear* empties the store after confirmation. Persists across reloads.
+- **← Back** button on the calibration modal. Returns from the ROI step to the calibration step, or from calibration to the upload-mode chooser, without forcing a re-upload of the image.
+
+### Changed
+- `reRenderROI()` now applies the constant working-resolution rendering to **both** ROI modes when calibrated; only the uncalibrated path keeps the legacy 650-pixel rescale.
+- The generic `input[type=range]` listener that re-runs analysis on slider change is scoped explicitly to the analysis sliders, so ROI controls update the on-screen square live without triggering an analysis.
+- Bread-type button toggling no longer accidentally clears the ROI-mode highlight (`#breadTypeBtns` selector restricts the toggle to the bread-type group).
+
+### Why
+First-round validation in `Test/Results.xlsx` showed coefficients of variation up to 28 % for *Mean Cell Area* across three repeats of the same loaf. The dominant cause was not operator imprecision but **scale-dependent processing**: the cell-size filter was in pixel units, and the rescale ratio in `reRenderROI()` varied with the ROI size. Same physical cells were accepted in one run and rejected in another. Putting the filter in mm² and locking the working resolution makes the pipeline scale-invariant, so repeated free-rectangle ROIs on the same image now produce closely matching results.
+
+---
+
 ## [5.1] — 2025
 
 ### Added

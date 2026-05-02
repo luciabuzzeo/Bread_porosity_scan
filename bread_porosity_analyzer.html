@@ -133,9 +133,11 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 #cROI{position:absolute;inset:0;width:100%;height:100%;background:transparent!important;pointer-events:none;z-index:2}
 
 /* Calibration modal */
-.cal-modal-box{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:700px;width:95%;display:flex;flex-direction:column;gap:1rem}
+.cal-modal-box{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:1.1rem 1.3rem;max-width:520px;width:90%;display:flex;flex-direction:column;gap:.75rem}
 .cal-modal-header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
-.cal-modal-header h2{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--gold2);white-space:nowrap}
+.cal-modal-header h2{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--gold2);white-space:nowrap;flex:1}
+.cal-back{padding:.4rem .7rem;background:var(--s2);color:var(--muted);border:1px solid var(--border);border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.6rem;cursor:pointer;transition:all .15s}
+.cal-back:hover{border-color:var(--gold);color:var(--gold2)}
 .cal-modal-header .cal-steps{font-size:.58rem;color:var(--muted);line-height:1.5;text-align:right}
 .cal-modal-header .cal-steps strong{color:var(--gold2)}
 .cal-canvas-wrap{position:relative;width:100%;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg);touch-action:none}
@@ -209,6 +211,7 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 <div class="modal-overlay" id="calModal" style="display:none">
   <div class="cal-modal-box">
     <div class="cal-modal-header">
+      <button class="cal-back" onclick="calBack()" title="Back">← Back</button>
       <h2 id="calModalTitle">Calibrate with ruler</h2>
       <div class="cal-steps" id="calSteps"><strong>Step 1:</strong> Touch the first point</div>
     </div>
@@ -277,13 +280,38 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 
   <div>
     <div class="slabel">Bread Type</div>
-    <div class="type-row">
+    <div class="type-row" id="breadTypeBtns">
       <button class="tbtn on" onclick="setType('white',this)"><span class="ic">⬜</span>Control/White</button>
       <button class="tbtn" onclick="setType('bsg',this)"><span class="ic">🟫</span>BSG/Dark</button>
     </div>
     <div class="algo-badge" id="algoBadge" style="margin-top:.5rem">
       <strong>Algorithm: Sauvola local adaptive</strong>
       Computes a separate threshold for each pixel based on local mean and standard deviation. Handles uneven lighting from photographic images. Applied on CLAHE-enhanced grayscale.
+    </div>
+  </div>
+
+  <hr class="div"/>
+
+  <div>
+    <div class="slabel">ROI (Region of Interest)</div>
+    <div class="type-row" id="roiBtns">
+      <button class="tbtn" onclick="setRoiMode('fixed',this)"><span class="ic">⬛</span>Fixed square</button>
+      <button class="tbtn on" onclick="setRoiMode('free',this)"><span class="ic">▭</span>Free rectangle</button>
+    </div>
+    <div class="cg" style="margin-top:.5rem">
+      <div class="cr"><span>ROI side (mm)</span><span class="cv" id="roiSideV">40</span></div>
+      <input type="range" id="roiSide" min="10" max="80" value="40" step="1"/>
+    </div>
+    <details style="margin-top:.5rem">
+      <summary style="font-size:.55rem;color:var(--muted);cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Advanced — working resolution</summary>
+      <div class="cg" style="margin-top:.5rem">
+        <div class="cr"><span>Working resolution (px/mm)</span><span class="cv" id="targetPxV">10</span></div>
+        <input type="range" id="targetPx" min="5" max="30" value="10" step="1"/>
+      </div>
+      <div class="ibox" style="margin-top:.5rem">Constant working resolution makes Sauvola's window and the closing kernel correspond to a fixed physical size, eliminating scale-driven variability between repeats.</div>
+    </details>
+    <div class="ibox lit" style="margin-top:.5rem">
+      <strong>Free rectangle</strong> — draw any ROI to fit the loaf cross-section. <strong>Fixed square</strong> samples a deterministic *N*×*N* mm window for strict reproducibility benchmarks.
     </div>
   </div>
 
@@ -318,14 +346,28 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
   <hr class="div"/>
 
   <div>
-    <div class="slabel">Cell Size Filter (px²)</div>
-    <div class="cg">
-      <div class="cr"><span>Min cell area</span><span class="cv" id="minAV">20</span></div>
-      <input type="range" id="minA" min="5" max="300" value="20" step="5"/>
+    <div class="slabel" id="filterLabel">Cell Size Filter (px²)</div>
+    <!-- px² sliders — used when image is not spatially calibrated -->
+    <div id="filterPx">
+      <div class="cg">
+        <div class="cr"><span>Min cell area</span><span class="cv" id="minAV">20</span></div>
+        <input type="range" id="minA" min="5" max="300" value="20" step="5"/>
+      </div>
+      <div class="cg" style="margin-top:.5rem">
+        <div class="cr"><span>Max cell area</span><span class="cv" id="maxAV">15000</span></div>
+        <input type="range" id="maxA" min="500" max="40000" value="15000" step="500"/>
+      </div>
     </div>
-    <div class="cg" style="margin-top:.5rem">
-      <div class="cr"><span>Max cell area</span><span class="cv" id="maxAV">15000</span></div>
-      <input type="range" id="maxA" min="500" max="40000" value="15000" step="500"/>
+    <!-- mm² sliders — used when image is calibrated; thresholds are physical sizes -->
+    <div id="filterMm" style="display:none">
+      <div class="cg">
+        <div class="cr"><span>Min cell area (mm²)</span><span class="cv" id="minAmmV">0.10</span></div>
+        <input type="range" id="minAmm" min="0.01" max="2.00" value="0.10" step="0.01"/>
+      </div>
+      <div class="cg" style="margin-top:.5rem">
+        <div class="cr"><span>Max cell area (mm²)</span><span class="cv" id="maxAmmV">150</span></div>
+        <input type="range" id="maxAmm" min="1" max="500" value="150" step="1"/>
+      </div>
     </div>
     <div class="ibox" style="margin-top:.5rem">
       <strong>No circularity filter</strong> by default. Literature shows bread pores are elliptical (circularity &lt; 1), not circular — filtering by shape rejects real pores. <em>Gonzales-Barron & Butler 2006.</em>
@@ -341,6 +383,19 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
   </div>
 
   <button class="btn" id="runBtn" disabled>Analyze — Generate Fingerprint</button>
+
+  <hr class="div"/>
+
+  <div>
+    <div class="slabel">Session Results</div>
+    <div class="ibox" id="histInfo" style="margin-bottom:.5rem">No analyses saved yet.</div>
+    <div class="type-row">
+      <button class="tbtn" onclick="exportCSV()" title="Download all saved results as CSV">⬇ Export CSV</button>
+      <button class="tbtn" onclick="clearHistory()" title="Delete the saved results from this browser">🗑 Clear</button>
+    </div>
+    <div class="ibox" style="margin-top:.5rem;font-size:.55rem">Each successful analysis is appended to this browser's local store. Survives reload; private to this device.</div>
+  </div>
+
 </aside>
 
 <main class="main">
@@ -352,7 +407,6 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
     <div class="mc empty"><div class="ml">Cell Count</div><div class="mv" id="m2">—</div><div class="mu">valid pores</div></div>
     <div class="mc empty"><div class="ml">Cell Density</div><div class="mv" id="m3">—</div><div class="mu">cells/cm² (crumb fineness)</div></div>
     <div class="mc empty"><div class="ml">Mean Cell Area</div><div class="mv" id="m4">—</div><div class="mu">px² per pore</div></div>
-    <div class="mc empty"><div class="ml">Uniformity</div><div class="mv" id="m5">—</div><div class="mu">CV of cell areas %</div></div>
   </div>
 
   <!-- Digital Texture Fingerprint -->
@@ -429,6 +483,74 @@ canvas{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--border)
 
 <script>
 // ══════════════════════════════════════════════════════
+//  0a. RESULTS HISTORY — persisted in localStorage
+// ══════════════════════════════════════════════════════
+
+const HIST_KEY = 'breadscan.history.v1';
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HIST_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+
+function saveHistory() {
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(STATE.history)); }
+  catch (e) { console.warn('BreadScan: localStorage write failed', e); }
+}
+
+function refreshHistInfo() {
+  const el = document.getElementById('histInfo');
+  if (!el) return;
+  const n = STATE.history.length;
+  el.innerHTML = n === 0
+    ? 'No analyses saved yet.'
+    : `<strong>${n}</strong> analysis result${n === 1 ? '' : 's'} saved.`;
+}
+
+function csvEscape(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCSV() {
+  if (!STATE.history.length) { alert('No results saved yet — run an analysis first.'); return; }
+  const cols = [
+    'timestamp', 'filename', 'breadType', 'calibrationMode', 'pxPerMm',
+    'roiMode', 'roiSideMm', 'workingPxPerMm',
+    'voidFraction2D_pct', 'voidFraction3D_pct', 'cellCount',
+    'cellDensity_cells_per_cm2', 'meanCellArea_mm2',
+    'cellUniformity_pct', 'wallThickness_mm', 'macroPore_pct'
+  ];
+  const lines = [cols.join(',')];
+  for (const r of STATE.history) {
+    lines.push(cols.map(c => csvEscape(r[c])).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  const stamp = d.getFullYear() +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0') + '_' +
+    String(d.getHours()).padStart(2, '0') +
+    String(d.getMinutes()).padStart(2, '0');
+  a.href = url; a.download = `breadscan_results_${stamp}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function clearHistory() {
+  if (!STATE.history.length) return;
+  if (!confirm(`Delete all ${STATE.history.length} saved analyses from this browser?`)) return;
+  STATE.history = [];
+  try { localStorage.removeItem(HIST_KEY); } catch (e) {}
+  refreshHistInfo();
+}
+
+// ══════════════════════════════════════════════════════
 //  0. STATE — calibration, ROI, interaction tracking
 // ══════════════════════════════════════════════════════
 
@@ -438,7 +560,9 @@ const STATE = {
   calPts: [],          // [{x,y}, {x,y}] in image-pixel coords
   pxPerMm: null,       // pixels per mm (null = uncalibrated)
   roi: null,           // {x,y,w,h} in image-pixel coords or null
-  roiMode: 'full',     // 'full' | 'draw'
+  roiMode: 'free',     // 'free' (rectangle of any size) | 'fixed' (square, drag-only — strict-determinism mode)
+  roiSideMm: 40,       // side length of the fixed square ROI, in mm
+  targetPxPerMm: 10,   // constant working resolution after re-render
   drag: null,          // drag state for ROI interaction
   imgW: 0, imgH: 0,   // loaded image dimensions
   zoom: 1,             // current zoom level (1–5)
@@ -446,17 +570,20 @@ const STATE = {
   pendingPt: null,     // {x,y} — unconfirmed calibration point
   pinch: null,         // pinch gesture tracking
   origImg: null,       // original Image element (full resolution)
-  origScale: 1         // ratio: display pixels / original pixels
+  origScale: 1,        // ratio: display pixels / original pixels
+  history: [],         // session results, persisted in localStorage
+  lastFilename: ''     // filename of most recently loaded image
 };
 
 function resetState() {
   STATE.mode = 'crumb'; STATE.phase = 'idle';
   STATE.calPts = []; STATE.pxPerMm = null;
-  STATE.roi = null; STATE.roiMode = 'full'; STATE.drag = null;
+  STATE.roi = null; STATE.drag = null;
   STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
   STATE.pendingPt = null; STATE.pinch = null;
   STATE.origImg = null; STATE.origScale = 1;
   document.getElementById('calBadge').classList.remove('visible');
+  if (typeof updateFilterMode === 'function') updateFilterMode(false);
   drawOverlay();
 }
 
@@ -475,6 +602,41 @@ function chooseMode(mode) {
   }
   // Show calibration modal with the image
   showCalModal(mode);
+}
+
+// ── Back from calibration modal ──
+// From ROI step: return to the calibration step (clear points + ROI, keep image and mode).
+// From calibration step: return to the upload-mode chooser (clear cal state, keep image).
+function calBack() {
+  if (STATE.phase === 'roi') {
+    STATE.phase = 'calibrating';
+    STATE.roi = null;
+    STATE.calPts = [];
+    STATE.pxPerMm = null;
+    STATE.pendingPt = null;
+    updateFilterMode(false);
+    document.getElementById('calConfirmBtn').disabled = true;
+    document.getElementById('calConfirmBtn').textContent = 'Confirm';
+    document.getElementById('calRedoROIBtn').style.display = 'none';
+    document.getElementById('calSkipBtn').style.display = 'none';
+    document.getElementById('calResult').textContent = '';
+    document.getElementById('calSteps').innerHTML = '<strong>Step 1:</strong> Tap the first point';
+    document.getElementById('calHint').innerHTML = STATE.mode === 'ruler'
+      ? '<strong>Tap two points</strong> on the ruler in the photo — scroll/pinch to zoom'
+      : '<strong>Tap two points</strong> on opposite edges of the coin — scroll/pinch to zoom';
+    drawCalOverlay();
+    return;
+  }
+  // calibrating → back to upload-mode chooser
+  document.getElementById('calModal').style.display = 'none';
+  STATE.phase = 'idle';
+  STATE.mode = 'crumb';
+  STATE.calPts = [];
+  STATE.pxPerMm = null;
+  STATE.pendingPt = null;
+  STATE.roi = null;
+  updateFilterMode(false);
+  showUploadModal();
 }
 
 // ── Calibration modal ──
@@ -534,11 +696,13 @@ function drawCalOverlay() {
     ctx.fillRect(0, r.y + r.h, cv.width, cv.height - r.y - r.h);
     ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = 2;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
-    // Corner handles
-    const hs = 10;
-    ctx.fillStyle = '#c9a84c';
-    for (const [cx, cy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
-      ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    // Corner handles only in free-rectangle mode (resize disabled in fixed mode)
+    if (STATE.roiMode !== 'fixed') {
+      const hs = 10;
+      ctx.fillStyle = '#c9a84c';
+      for (const [cx, cy] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]]) {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+      }
     }
     // Size label
     if (STATE.pxPerMm) {
@@ -627,6 +791,7 @@ function calcCalibration() {
   STATE.pxPerMm = distPx / mmVal;
   document.getElementById('calResult').innerHTML =
     `<strong>${STATE.pxPerMm.toFixed(2)} px/mm</strong>`;
+  updateFilterMode(true);
   // Transition to step 3 only if not already there
   if (STATE.phase !== 'roi') enterROIStep();
   drawCalOverlay();
@@ -659,11 +824,19 @@ function redoCalPoint() {
 }
 
 function redoROI() {
-  STATE.roi = null;
   STATE.drag = null;
-  document.getElementById('calRedoROIBtn').style.display = 'none';
-  document.getElementById('calConfirmBtn').disabled = true;
-  document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+  if (STATE.roiMode === 'fixed' && STATE.pxPerMm) {
+    // Re-centre the fixed square; keep it confirmable.
+    placeFixedROI();
+    document.getElementById('calConfirmBtn').disabled = false;
+    document.getElementById('calSteps').innerHTML =
+      `<strong>Step 3:</strong> Drag the ${STATE.roiSideMm}×${STATE.roiSideMm} mm square onto the crumb`;
+  } else {
+    STATE.roi = null;
+    document.getElementById('calRedoROIBtn').style.display = 'none';
+    document.getElementById('calConfirmBtn').disabled = true;
+    document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+  }
   drawCalOverlay();
 }
 
@@ -675,18 +848,47 @@ function applyZoom() {
 
 function enterROIStep() {
   STATE.phase = 'roi';
-  STATE.roi = null;
   STATE.pendingPt = null;
   // Reset zoom for ROI step
   STATE.zoom = 1; STATE.panX = 0; STATE.panY = 0;
   applyZoom();
   document.getElementById('calPtActions').style.display = 'none';
-  document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
-  document.getElementById('calHint').innerHTML = '<strong>Drag on the image</strong> to select the crumb region (exclude crust and reference objects)';
   document.getElementById('calSkipBtn').style.display = '';
-  document.getElementById('calRedoROIBtn').style.display = 'none';
-  document.getElementById('calConfirmBtn').disabled = true;
   document.getElementById('calConfirmBtn').textContent = 'Confirm ROI';
+
+  if (STATE.roiMode === 'fixed' && STATE.pxPerMm) {
+    // Centred fixed-size square ROI; user only repositions (drag), no resize.
+    placeFixedROI();
+    document.getElementById('calSteps').innerHTML =
+      `<strong>Step 3:</strong> Drag the ${STATE.roiSideMm}×${STATE.roiSideMm} mm square onto the crumb`;
+    document.getElementById('calHint').innerHTML =
+      '<strong>Drag the gold square</strong> to a representative crumb region (avoid crust). Size is fixed for reproducibility.';
+    document.getElementById('calConfirmBtn').disabled = false;
+    document.getElementById('calRedoROIBtn').style.display = '';
+  } else {
+    // Free-rectangle (legacy) — operator draws any rectangle.
+    STATE.roi = null;
+    document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+    document.getElementById('calHint').innerHTML = '<strong>Drag on the image</strong> to select the crumb region (exclude crust and reference objects)';
+    document.getElementById('calConfirmBtn').disabled = true;
+    document.getElementById('calRedoROIBtn').style.display = 'none';
+  }
+}
+
+// Place a centred square ROI of STATE.roiSideMm millimetres on the loaded image.
+function placeFixedROI() {
+  if (!STATE.pxPerMm || !STATE.imgW || !STATE.imgH) return;
+  const desiredPx = Math.round(STATE.roiSideMm * STATE.pxPerMm);
+  const maxPx = Math.min(STATE.imgW, STATE.imgH);
+  const side = Math.min(desiredPx, maxPx);
+  const cx = Math.round(STATE.imgW / 2);
+  const cy = Math.round(STATE.imgH / 2);
+  STATE.roi = {
+    x: Math.max(0, Math.min(STATE.imgW - side, cx - Math.round(side / 2))),
+    y: Math.max(0, Math.min(STATE.imgH - side, cy - Math.round(side / 2))),
+    w: side, h: side
+  };
+  drawCalOverlay();
 }
 
 function confirmCalibration(skip) {
@@ -720,22 +922,33 @@ function reRenderROI() {
   const img = STATE.origImg;
   const s = STATE.origScale; // display-px / original-px
 
-  // ROI in original image coordinates
+  // ROI in original-image coordinates
   const ox = Math.round(r.x / s), oy = Math.round(r.y / s);
   const ow = Math.round(r.w / s), oh = Math.round(r.h / s);
 
-  // Scale the ROI crop to fill up to MAX px
-  const MAX = 650;
-  const roiScale = Math.min(1, Math.min(MAX / ow, MAX / oh));
-  const nw = Math.round(ow * roiScale), nh = Math.round(oh * roiScale);
+  let nw, nh, newPxPerMm;
+  if (STATE.pxPerMm) {
+    // Calibrated → constant working resolution for ANY ROI shape (free rectangle
+    // or fixed square). The ROI is rendered at exactly targetPxPerMm so that
+    // Sauvola's window and the morphological kernel correspond to a fixed
+    // physical size on every run, regardless of the rectangle the operator drew.
+    const wMm = r.w / STATE.pxPerMm;
+    const hMm = r.h / STATE.pxPerMm;
+    nw = Math.max(8, Math.round(wMm * STATE.targetPxPerMm));
+    nh = Math.max(8, Math.round(hMm * STATE.targetPxPerMm));
+    newPxPerMm = STATE.targetPxPerMm;
+  } else {
+    // Uncalibrated → fall back to the legacy 650-max rescaling.
+    const MAX = 650;
+    const roiScale = Math.min(1, Math.min(MAX / ow, MAX / oh));
+    nw = Math.round(ow * roiScale);
+    nh = Math.round(oh * roiScale);
+    newPxPerMm = null;
+  }
 
-  // Rescale factor: how much bigger is the new rendering vs the old ROI
-  const rescale = nw / r.w;
+  STATE.pxPerMm = newPxPerMm;
 
-  // Update pxPerMm to match the new pixel scale
-  STATE.pxPerMm *= rescale;
-
-  // Re-draw working canvas with just the ROI at higher resolution
+  // Re-draw working canvas with just the ROI at the chosen resolution
   const wk = document.getElementById('wk');
   wk.width = nw; wk.height = nh;
   wk.getContext('2d').drawImage(img, ox, oy, ow, oh, 0, 0, nw, nh);
@@ -751,13 +964,18 @@ function reRenderROI() {
 
   // Update upload zone info
   const dz = document.getElementById('dz');
-  dz.querySelector('p').innerHTML += `<br><span style="color:var(--blue)">ROI re-rendered: ${nw}×${nh} px</span>`;
+  dz.querySelector('p').innerHTML += `<br><span style="color:var(--blue)">ROI re-rendered: ${nw}×${nh} px @ ${newPxPerMm.toFixed(2)} px/mm</span>`;
 }
 
 function calHitTestROI(px, py, displayScale) {
   if (!STATE.roi) return null;
   const r = STATE.roi;
-  // Scale margin by inverse of display scale so it's always ~14 CSS pixels
+  // Fixed-size square: drag-only, no corner resize.
+  if (STATE.roiMode === 'fixed') {
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'move';
+    return null;
+  }
+  // Free rectangle: corner handles enable resize.
   const margin = 14 / (displayScale || 1);
   const corners = [
     { name: 'tl', cx: r.x, cy: r.y },
@@ -884,7 +1102,8 @@ function initCalModalEvents() {
       } else if (hit) {
         STATE.drag = { type: 'resize', corner: hit, sx: pt.x, sy: pt.y, origROI: { ...STATE.roi } };
         panStart = null;
-      } else {
+      } else if (STATE.roiMode !== 'fixed') {
+        // Free rectangle only: clicking outside the existing ROI starts a new one.
         STATE.roi = { x: pt.x, y: pt.y, w: 0, h: 0 };
         STATE.drag = { type: 'new', sx: pt.x, sy: pt.y };
         panStart = null;
@@ -1440,8 +1659,6 @@ function analyze() {
   const sigma  = parseFloat(document.getElementById('sg').value);
   const clip   = parseFloat(document.getElementById('cl').value);
   const ofPct  = parseInt(document.getElementById('of').value);
-  const minA   = parseInt(document.getElementById('minA').value);
-  const maxA   = parseInt(document.getElementById('maxA').value);
   const f3d    = parseFloat(document.getElementById('f3').value);
 
   const wk = document.getElementById('wk');
@@ -1459,8 +1676,25 @@ function analyze() {
   const unit = cal ? 'mm²' : 'px²';
   const toUnit = (px2) => cal ? px2 / (cal * cal) : px2;
 
+  // Cell-size filter: physical (mm²) when calibrated, pixel (px²) otherwise.
+  // Using mm² when calibrated decouples the filter from the rendered pixel size,
+  // so the same physical cell is accepted/rejected consistently across runs.
+  let minA, maxA, filterDesc;
+  if (cal) {
+    const minMm2 = parseFloat(document.getElementById('minAmm').value);
+    const maxMm2 = parseFloat(document.getElementById('maxAmm').value);
+    minA = minMm2 * cal * cal;
+    maxA = maxMm2 * cal * cal;
+    filterDesc = `${minMm2.toFixed(2)}–${maxMm2} mm² (= ${minA.toFixed(0)}–${maxA.toFixed(0)} px²)`;
+  } else {
+    minA = parseInt(document.getElementById('minA').value);
+    maxA = parseInt(document.getElementById('maxA').value);
+    filterDesc = `${minA}–${maxA} px²`;
+  }
+
   log.push(`Image: ${wk.width}×${wk.height}${STATE.roi ? ` → ROI: ${W}×${H}` : ''}  |  Type: ${type}  |  σ=${sigma}  |  CLAHE clip=${clip}`);
-  if (cal) log.push(`Calibration: ${cal.toFixed(2)} px/mm  |  Units: ${unit}`);
+  if (cal) log.push(`Calibration: ${cal.toFixed(2)} px/mm  |  Units: ${unit}  |  Filter: ${filterDesc}`);
+  else log.push(`Filter: ${filterDesc}`);
 
   // Step 1: Grayscale + blur
   let gray = toGray(imgData.data, W, H);
@@ -1533,9 +1767,9 @@ function analyze() {
   const meanA2  = valid.length ? porePx/valid.length : 0;
   const cvAreas = (() => {
     if (!valid.length) return 0;
-    const areas=valid.map(b=>b.area);
-    const m=meanA2, v=areas.reduce((s,a)=>s+(a-m)**2,0)/areas.length;
-    return Math.sqrt(v)/m;
+    const areas = valid.map(b=>b.area);
+    const v = areas.reduce((s,a)=>s+(a-meanA2)**2,0)/areas.length;
+    return Math.sqrt(v)/meanA2;
   })();
 
   log.push(`\n── FINGERPRINT ──`);
@@ -1544,7 +1778,6 @@ function analyze() {
   log.push(`Cell count:           ${valid.length}`);
   log.push(`Cell density:         ${density.toFixed(3)} ${densityUnit}`);
   log.push(`Mean cell area:       ${cal ? toUnit(meanA2).toFixed(2)+' '+unit : Math.round(meanA2)+' px²'}`);
-  log.push(`Cell uniformity (1-CV): ${(Math.max(0,1-cvAreas)*100).toFixed(1)}%`);
 
   // Quality check vs literature
   if (type==='white'){
@@ -1592,7 +1825,6 @@ function analyze() {
   setM('m3',density.toFixed(2),'',null,densityUnit);
   const meanDisp = cal ? toUnit(meanA2).toFixed(2) : String(Math.round(meanA2));
   setM('m4',meanDisp,'',null,unit+' per pore');
-  setM('m5',(Math.max(0,1-cvAreas)*100).toFixed(0)+'%','');
   // Update metric unit labels
   document.getElementById('m3').closest('.mc').querySelector('.mu').textContent = densityUnit;
   document.getElementById('m4').closest('.mc').querySelector('.mu').textContent = unit + ' per pore';
@@ -1606,6 +1838,34 @@ function analyze() {
     :l.startsWith('ℹ')   ?`<span style="color:var(--blue)">${l}</span>`
     :l
   ).join('\n');
+
+  // ── Persist to session history (filename + metrics) ──
+  const solidArea = totalPx - porePx;
+  const wallThickPx = valid.length > 0 ? Math.sqrt(solidArea / valid.length) : 0;
+  const macroAreaPx = valid.filter(b => b.area > 2000).reduce((s,b)=>s+b.area, 0);
+  const macroPct = totalPx > 0 ? macroAreaPx / totalPx * 100 : 0;
+  const fmtNum = (v, d=4) => Number.isFinite(v) ? Number(v.toFixed(d)) : '';
+  const row = {
+    timestamp: new Date().toISOString(),
+    filename: STATE.lastFilename || '',
+    breadType: type,
+    calibrationMode: STATE.mode,
+    pxPerMm: cal ? fmtNum(cal, 3) : '',
+    roiMode: STATE.roiMode,
+    roiSideMm: STATE.roiMode === 'fixed' ? STATE.roiSideMm : '',
+    workingPxPerMm: STATE.roiMode === 'fixed' ? STATE.targetPxPerMm : '',
+    voidFraction2D_pct: fmtNum(vf2d * 100, 2),
+    voidFraction3D_pct: fmtNum(vf3d * 100, 2),
+    cellCount: valid.length,
+    cellDensity_cells_per_cm2: cal ? fmtNum(density, 3) : '',
+    meanCellArea_mm2: cal ? fmtNum(toUnit(meanA2), 4) : '',
+    cellUniformity_pct: fmtNum(Math.max(0, 1 - cvAreas) * 100, 1),
+    wallThickness_mm: cal ? fmtNum(wallThickPx / cal, 3) : fmtNum(wallThickPx, 2),
+    macroPore_pct: fmtNum(macroPct, 2)
+  };
+  STATE.history.push(row);
+  saveHistory();
+  refreshHistInfo();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1619,13 +1879,13 @@ const ALGO_TEXT = {
 
 // Default parameter sets for each bread type
 const DEFAULTS = {
-  white: { sg: '1.0', of: '5', minA: '20' },
-  bsg:   { sg: '2.0', of: '-8', minA: '10' }
+  white: { sg: '1.0', of: '5',  minA: '20', minAmm: '0.10' },
+  bsg:   { sg: '2.0', of: '-8', minA: '10', minAmm: '0.05' }
 };
 
 function setType(t, btn){
   document.getElementById('wk').dataset.type = t;
-  document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('#breadTypeBtns .tbtn').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('algoBadge').innerHTML = ALGO_TEXT[t];
   // Auto-switch defaults for bread type
@@ -1633,16 +1893,19 @@ function setType(t, btn){
   document.getElementById('sg').value = d.sg;
   document.getElementById('of').value = d.of;
   document.getElementById('minA').value = d.minA;
+  document.getElementById('minAmm').value = d.minAmm;
   syncSliders();
 }
 
 function syncSliders(){
   const map=[
     ['sg','sgV','.1f'],['cl','clV','.1f'],['of','ofV','off'],
-    ['minA','minAV',''],['maxA','maxAV',''],['f3','f3V','.2f']
+    ['minA','minAV',''],['maxA','maxAV',''],['f3','f3V','.2f'],
+    ['minAmm','minAmmV','.2f'],['maxAmm','maxAmmV','']
   ];
   map.forEach(([id,vid,fmt])=>{
-    const v=document.getElementById(id).value;
+    const el = document.getElementById(id); if (!el) return;
+    const v=el.value;
     let txt;
     if(fmt==='off') txt=(parseInt(v)>=0?'+':'')+v+'%';
     else if(fmt==='.2f') txt=parseFloat(v).toFixed(2);
@@ -1651,8 +1914,58 @@ function syncSliders(){
     document.getElementById(vid).textContent=txt;
   });
 }
+
+// Show the mm² sliders when the image is calibrated, px² otherwise.
+// Filter thresholds are physical sizes (mm²) when calibrated, so the same
+// minimum cell is rejected/accepted consistently across runs.
+function updateFilterMode(calibrated) {
+  document.getElementById('filterPx').style.display = calibrated ? 'none' : '';
+  document.getElementById('filterMm').style.display = calibrated ? '' : 'none';
+  document.getElementById('filterLabel').textContent =
+    calibrated ? 'Cell Size Filter (mm²)' : 'Cell Size Filter (px²)';
+}
 function onSliderChange(){syncSliders();if(!document.getElementById('runBtn').disabled)analyze();}
-document.querySelectorAll('input[type=range]').forEach(el=>el.addEventListener('input',onSliderChange));
+// Only the analysis sliders re-trigger analyze on change. ROI controls have their own handlers below.
+['sg','cl','of','minA','maxA','f3','minAmm','maxAmm'].forEach(id => {
+  document.getElementById(id).addEventListener('input', onSliderChange);
+});
+
+// ── ROI controls ──
+function setRoiMode(m, btn) {
+  STATE.roiMode = m;
+  document.querySelectorAll('#roiBtns .tbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  if (STATE.phase === 'roi') {
+    if (m === 'fixed' && STATE.pxPerMm) {
+      placeFixedROI();
+      document.getElementById('calConfirmBtn').disabled = false;
+      document.getElementById('calRedoROIBtn').style.display = '';
+      document.getElementById('calSteps').innerHTML =
+        `<strong>Step 3:</strong> Drag the ${STATE.roiSideMm}×${STATE.roiSideMm} mm square onto the crumb`;
+    } else {
+      STATE.roi = null;
+      drawCalOverlay();
+      document.getElementById('calConfirmBtn').disabled = true;
+      document.getElementById('calRedoROIBtn').style.display = 'none';
+      document.getElementById('calSteps').innerHTML = '<strong>Step 3:</strong> Draw a rectangle around the crumb area';
+    }
+  }
+}
+document.getElementById('roiSide').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('roiSide').value);
+  document.getElementById('roiSideV').textContent = v;
+  STATE.roiSideMm = v;
+  if (STATE.phase === 'roi' && STATE.roiMode === 'fixed' && STATE.pxPerMm) {
+    placeFixedROI();
+    document.getElementById('calSteps').innerHTML =
+      `<strong>Step 3:</strong> Drag the ${v}×${v} mm square onto the crumb`;
+  }
+});
+document.getElementById('targetPx').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('targetPx').value);
+  document.getElementById('targetPxV').textContent = v;
+  STATE.targetPxPerMm = v;
+});
 
 function loadImg(file){
   const r=new FileReader();
@@ -1664,6 +1977,7 @@ function loadImg(file){
       iw=Math.round(iw*scale); ih=Math.round(ih*scale);
       // Reset state for new image
       resetState();
+      STATE.lastFilename = file.name;
       STATE.imgW = iw; STATE.imgH = ih;
       STATE.origImg = img;
       STATE.origScale = scale;
@@ -1706,6 +2020,8 @@ document.getElementById('coinSelect').addEventListener('change', () => {
 
 syncSliders();
 initCalModalEvents();
+STATE.history = loadHistory();
+refreshHistInfo();
 </script>
 </body>
 </html>
